@@ -81,14 +81,6 @@ DATABASES = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'promaks.sqlite3',
     },
-    'psql': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'promaks',
-        'USER': 'promaks',
-        'PASSWORD': '6yhn^YHN',
-        'HOST': '192.168.20.127',
-        'PORT': '',
-    }
 }
 
 # Password validation
