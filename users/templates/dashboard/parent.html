@@ -1,0 +1,208 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Панель родителя{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="bi bi-people-fill"></i> Панель родителя
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <span class="btn btn-sm btn-outline-primary">
+                Детей: <strong>{{ total_children }}</strong>
+            </span>
+        </div>
+    </div>
+</div>
+
+<!-- Дети -->
+{% for child_data in children_data %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-light">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">
+                        <i class="bi bi-person"></i> {{ child_data.child.user.get_full_name }}
+                        <span class="badge bg-primary">{{ child_data.child.class_group }}</span>
+                    </h4>
+                    <div>
+                        <a href="#" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-telephone"></i> Связаться с классным руководителем
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card-body">
+                <!-- Статистика посещаемости -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card text-white bg-success">
+                            <div class="card-body text-center py-3">
+                                <h1 class="mb-0">{{ child_data.attendance_stats.present|default:0 }}</h1>
+                                <p class="mb-0 small">Присутствовал</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-white bg-danger">
+                            <div class="card-body text-center py-3">
+                                <h1 class="mb-0">{{ child_data.attendance_stats.absent|default:0 }}</h1>
+                                <p class="mb-0 small">Отсутствовал</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-white bg-info">
+                            <div class="card-body text-center py-3">
+                                <h1 class="mb-0">{{ child_data.attendance_stats.ill|default:0 }}</h1>
+                                <p class="mb-0 small">Болел</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-white bg-warning">
+                            <div class="card-body text-center py-3">
+                                <h1 class="mb-0">{{ child_data.attendance_stats.late|default:0 }}</h1>
+                                <p class="mb-0 small">Опоздал</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Расписание на сегодня -->
+                <div class="mb-4">
+                    <h5><i class="bi bi-calendar-day"></i> Расписание на сегодня</h5>
+                    {% if child_data.today_lessons %}
+                        <div class="row">
+                            {% for lesson in child_data.today_lessons %}
+                            <div class="col-md-2 mb-2">
+                                <div class="card">
+                                    <div class="card-body text-center py-2">
+                                        <strong>{{ lesson.lesson_number }} урок</strong>
+                                        <p class="mb-0 small">{{ lesson.subject.title }}</p>
+                                        <small class="text-muted">{{ lesson.start_time|time:"H:i" }}</small>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted">Сегодня уроков нет</p>
+                    {% endif %}
+                </div>
+                
+                <!-- Последние оценки -->
+                <div>
+                    <h5><i class="bi bi-journal-text"></i> Последние оценки</h5>
+                    {% if child_data.recent_marks %}
+                        <div class="row">
+                            {% for mark in child_data.recent_marks %}
+                            <div class="col-md-2 mb-2">
+                                <div class="card text-center">
+                                    <div class="card-body py-2">
+                                        <span class="grade-badge grade-{{ mark.value }}" style="margin: 0 auto;">
+                                            {{ mark.value }}
+                                        </span>
+                                        <p class="mb-0 small mt-2">{{ mark.lesson.subject.title }}</p>
+                                        <small class="text-muted">{{ mark.created_at|date:"d.m" }}</small>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted">Оценок пока нет</p>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="card-footer">
+                <div class="d-flex justify-content-between">
+                    <a href="#" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-journal-text"></i> Все оценки
+                    </a>
+                    <a href="#" class="btn btn-sm btn-outline-success">
+                        <i class="bi bi-clipboard-check"></i> Посещаемость
+                    </a>
+                    <a href="#" class="btn btn-sm btn-outline-info">
+                        <i class="bi bi-book"></i> Домашние задания
+                    </a>
+                    <a href="#" class="btn btn-sm btn-outline-warning">
+                        <i class="bi bi-calendar-week"></i> Расписание
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% empty %}
+<div class="text-center py-5">
+    <i class="bi bi-people" style="font-size: 4rem; color: #6c757d;"></i>
+    <h3 class="mt-3">У вас нет привязанных детей</h3>
+    <p class="text-muted">Обратитесь к администратору для привязки детей к вашему аккаунту</p>
+    <a href="#" class="btn btn-primary mt-2">
+        <i class="bi bi-envelope"></i> Написать администратору
+    </a>
+</div>
+{% endfor %}
+
+<!-- Общая статистика -->
+{% if children_data %}
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Общая статистика</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-4">
+                        <div class="border rounded p-3">
+                            <h2 class="text-primary">
+                                {% with total=0 %}
+                                    {% for child in children_data %}
+                                        {% for mark in child.recent_marks %}
+                                            {% if mark.value >= 4 %}
+                                                {{ total|add:1 }}
+                                            {% endif %}
+                                        {% endfor %}
+                                    {% endfor %}
+                                {% endwith %}
+                            </h2>
+                            <p class="mb-0">Хороших оценок (4-5)</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="border rounded p-3">
+                            <h2 class="text-success">
+                                {% with total=0 %}
+                                    {% for child in children_data %}
+                                        {{ total|add:child.attendance_stats.present|default:0 }}
+                                    {% endfor %}
+                                {% endwith %}
+                            </h2>
+                            <p class="mb-0">Дней присутствия</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="border rounded p-3">
+                            <h2 class="text-info">
+                                {% with total=0 %}
+                                    {% for child in children_data %}
+                                        {{ total|add:child.today_lessons.count }}
+                                    {% endfor %}
+                                {% endwith %}
+                            </h2>
+                            <p class="mb-0">Уроков сегодня</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

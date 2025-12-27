@@ -1,0 +1,204 @@
+{% extends 'layouts/base.html' %}
+
+{% block auth_content %}
+<!-- Герой-секция -->
+<div class="hero-section text-center py-5 mb-5">
+    <div class="container">
+        <h1 class="display-4 fw-bold mb-3">
+            <i class="bi bi-journal-bookmark-fill text-primary"></i> Электронный журнал
+        </h1>
+        <p class="lead mb-4">
+            Современная система управления учебным процессом для школ.
+            Удобный доступ к расписанию, оценкам и домашним заданиям.
+        </p>
+        <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+            <a href="{% url 'users:login' %}" class="btn btn-primary btn-lg px-4 me-md-2">
+                <i class="bi bi-box-arrow-in-right"></i> Войти в систему
+            </a>
+            <a href="{% url 'users:register' %}" class="btn btn-outline-primary btn-lg px-4">
+                <i class="bi bi-person-plus"></i> Зарегистрироваться
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Преимущества -->
+<div class="container py-5">
+    <h2 class="text-center mb-5">Почему выбирают наш журнал?</h2>
+
+    <div class="row g-4">
+        <div class="col-md-4">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-body text-center p-4">
+                    <div class="bg-primary bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center mb-3"
+                         style="width: 80px; height: 80px;">
+                        <i class="bi bi-speedometer2 text-primary" style="font-size: 2rem;"></i>
+                    </div>
+                    <h4>Удобный интерфейс</h4>
+                    <p class="text-muted">
+                        Интуитивно понятный интерфейс для учеников, родителей и учителей.
+                        Все нужные функции под рукой.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-body text-center p-4">
+                    <div class="bg-success bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center mb-3"
+                         style="width: 80px; height: 80px;">
+                        <i class="bi bi-shield-check text-success" style="font-size: 2rem;"></i>
+                    </div>
+                    <h4>Безопасность данных</h4>
+                    <p class="text-muted">
+                        Надежное хранение и защита персональных данных.
+                        Разграничение доступа по ролям пользователей.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-body text-center p-4">
+                    <div class="bg-info bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center mb-3"
+                         style="width: 80px; height: 80px;">
+                        <i class="bi bi-graph-up text-info" style="font-size: 2rem;"></i>
+                    </div>
+                    <h4>Детальная статистика</h4>
+                    <p class="text-muted">
+                        Подробные отчеты по успеваемости и посещаемости.
+                        Анализ данных для принятия взвешенных решений.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Роли пользователей -->
+<div class="bg-light py-5">
+    <div class="container">
+        <h2 class="text-center mb-5">Для кого предназначена система?</h2>
+
+        <div class="row g-4">
+            <div class="col-md-3">
+                <div class="card h-100">
+                    <div class="card-body text-center p-4">
+                        <div class="bg-primary rounded-circle d-inline-flex align-items-center justify-content-center mb-3"
+                             style="width: 60px; height: 60px;">
+                            <i class="bi bi-person-video3 text-white" style="font-size: 1.5rem;"></i>
+                        </div>
+                        <h5>Ученики</h5>
+                        <ul class="list-unstyled text-start">
+                            <li><i class="bi bi-check text-success"></i> Расписание уроков</li>
+                            <li><i class="bi bi-check text-success"></i> Электронный дневник</li>
+                            <li><i class="bi bi-check text-success"></i> Домашние задания</li>
+                            <li><i class="bi bi-check text-success"></i> Уведомления</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card h-100">
+                    <div class="card-body text-center p-4">
+                        <div class="bg-success rounded-circle d-inline-flex align-items-center justify-content-center mb-3"
+                             style="width: 60px; height: 60px;">
+                            <i class="bi bi-person-check text-white" style="font-size: 1.5rem;"></i>
+                        </div>
+                        <h5>Учителя</h5>
+                        <ul class="list-unstyled text-start">
+                            <li><i class="bi bi-check text-success"></i> Электронный журнал</li>
+                            <li><i class="bi bi-check text-success"></i> Выставление оценок</li>
+                            <li><i class="bi bi-check text-success"></i> Посещаемость</li>
+                            <li><i class="bi bi-check text-success"></i> Отчеты</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card h-100">
+                    <div class="card-body text-center p-4">
+                        <div class="bg-info rounded-circle d-inline-flex align-items-center justify-content-center mb-3"
+                             style="width: 60px; height: 60px;">
+                            <i class="bi bi-people-fill text-white" style="font-size: 1.5rem;"></i>
+                        </div>
+                        <h5>Родители</h5>
+                        <ul class="list-unstyled text-start">
+                            <li><i class="bi bi-check text-success"></i> Успеваемость детей</li>
+                            <li><i class="bi bi-check text-success"></i> Посещаемость</li>
+                            <li><i class="bi bi-check text-success"></i> Общение с учителями</li>
+                            <li><i class="bi bi-check text-success"></i> Уведомления</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card h-100">
+                    <div class="card-body text-center p-4">
+                        <div class="bg-warning rounded-circle d-inline-flex align-items-center justify-content-center mb-3"
+                             style="width: 60px; height: 60px;">
+                            <i class="bi bi-shield-check text-white" style="font-size: 1.5rem;"></i>
+                        </div>
+                        <h5>Администрация</h5>
+                        <ul class="list-unstyled text-start">
+                            <li><i class="bi bi-check text-success"></i> Управление школой</li>
+                            <li><i class="bi bi-check text-success"></i> Аналитика</li>
+                            <li><i class="bi bi-check text-success"></i> Отчетность</li>
+                            <li><i class="bi bi-check text-success"></i> Контроль</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Призыв к действию -->
+<div class="container py-5 text-center">
+    <h2 class="mb-4">Готовы начать?</h2>
+    <p class="lead mb-4">
+        Присоединяйтесь к тысячам пользователей, которые уже оценили преимущества электронного журнала
+    </p>
+    <a href="{% url 'users:register' %}" class="btn btn-primary btn-lg px-5">
+        <i class="bi bi-rocket-takeoff"></i> Начать бесплатно
+    </a>
+</div>
+
+<!-- Футер -->
+<footer class="bg-dark text-white py-4 mt-5">
+    <div class="container">
+        <div class="row">
+            <div class="col-md-4">
+                <h5>Электронный журнал</h5>
+                <p class="text-muted">
+                    Современное решение для управления учебным процессом в образовательных учреждениях
+                </p>
+            </div>
+            <div class="col-md-4">
+                <h5>Контакты</h5>
+                <ul class="list-unstyled">
+                    <li><i class="bi bi-envelope"></i> support@school-journal.ru</li>
+                    <li><i class="bi bi-telephone"></i> +7 (XXX) XXX-XX-XX</li>
+                </ul>
+            </div>
+            <div class="col-md-4">
+                <h5>Быстрые ссылки</h5>
+                <ul class="list-unstyled">
+                    <li><a href="{% url 'users:login' %}" class="text-white text-decoration-none">Вход в систему</a></li>
+                    <li><a href="{% url 'users:register' %}" class="text-white text-decoration-none">Регистрация</a></li>
+                    <li><a href="#" class="text-white text-decoration-none">Документация</a></li>
+                </ul>
+            </div>
+        </div>
+        <hr class="text-muted">
+        <div class="text-center text-muted">
+            <small>© 2024 Электронный журнал. Все права защищены.</small>
+        </div>
+    </div>
+</footer>
+{% endblock %}

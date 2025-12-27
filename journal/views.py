@@ -17,11 +17,22 @@ class MarkViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        # queryset = Mark.objects.all()
+        queryset = Mark.objects.select_related(
+            'student__user',
+            'lesson__subject',
+            'teacher__user'
+        )
         if user.role == 'STUDENT':
-            return Mark.objects.filter(student__user=user)
+            queryset = queryset.filter(student__user=user)
         elif user.role == 'TEACHER':
-            return Mark.objects.filter(teacher__user=user)
-        return Mark.objects.all()
+            # Учитель видит оценки: 1) которые он выставил, 2) за свои уроки.
+            from django.db.models import Q
+            queryset = queryset.filter(
+                Q(teacher__user=user) | Q(lesson__teacher__user=user)
+            )
+        # Администратор видит все оценки (queryset остается без изменений)
+        return queryset
 
     @action(detail=False, methods=['get'])
     def student_marks(self, request):
@@ -29,6 +40,9 @@ class MarkViewSet(viewsets.ModelViewSet):
         marks = Mark.objects.filter(student_id=student_id)
         serializer = self.get_serializer(marks, many=True)
         return Response(serializer.data)
+    """Безопасность эндпоинта student_marks: Любой аутентифицированный пользователь может получить оценки любого 
+    ученика, указав student_id. Добавьте проверку прав: учитель может смотреть своих учеников, родитель — своих 
+    детей, ученик — только свои."""
 
 
 class AttendanceViewSet(viewsets.ModelViewSet):

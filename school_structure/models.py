@@ -50,24 +50,43 @@ class Quarter(models.Model):
         verbose_name_plural = 'Четверти'
         ordering = ['academic_year', 'number']
         unique_together = ['academic_year', 'number']
+        indexes = [
+            models.Index(fields=['academic_year', 'is_current']),
+            models.Index(fields=['start_date', 'end_date']),
+        ]
 
     def __str__(self):
         return f'{self.name} ({self.academic_year})'
 
     @property
     def week_count(self):
-        """Количество учебных недель в четверти"""
-        from dateutil.relativedelta import relativedelta
-        weeks = 0
+        # """Количество учебных недель в четверти"""
+        # # from dateutil.relativedelta import relativedelta
+        # weeks = 0
+        #
+        # current_date = self.start_date
+        # while self.start_date and current_date <= self.end_date:
+        #     # Считаем только понедельники как начало учебных недель
+        #     if current_date.weekday() == 0:
+        #         weeks += 1
+        #     current_date += datetime.timedelta(days=1)
+        # return weeks or 1  # минимум 1 неделя
 
-        current_date = self.start_date
-        while self.start_date and current_date <= self.end_date:
-            # Считаем только понедельники как начало учебных недель
-            if current_date.weekday() == 0:
-                weeks += 1
-            current_date += datetime.timedelta(days=1)
-        return weeks or 1  # минимум 1 неделя
+        """Количество учебных недель в четверти (понедельников)"""
+        if not (self.start_date and self.end_date):
+            return 0
+        # Находим первый понедельник на или после start_date
+        days_ahead = 0 - self.start_date.weekday()  # weekday() для понедельника = 0
+        if days_ahead < 0:
+            days_ahead += 7
+        first_monday = self.start_date + datetime.timedelta(days=days_ahead)
 
+        # Если первый понедельник уже после конца четверти, недель 0
+        if first_monday > self.end_date:
+            return 0
+
+        # Считаем количество понедельников от first_monday до end_date
+        return ((self.end_date - first_monday).days // 7) + 1
 
     def save(self, *args, **kwargs):
         # Проверяем пересечение дат с другими четвертями
@@ -103,7 +122,7 @@ class ClassGroup(models.Model):
     )
     academic_year = models.ForeignKey(
         AcademicYear,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT, # Запрещает удаление года, если есть классы
         related_name='class_groups',
         verbose_name='Учебный год'
     )
@@ -121,6 +140,11 @@ class ClassGroup(models.Model):
     def __str__(self):
         return f'{self.year_of_study}-{self.name} ({self.academic_year})'
 
+    """
+    ClassGroup.save(): Пересчет students_count при каждом сохранении класса неэффективен, если учеников много. 
+    Лучше использовать аннотацию Count в запросах там, где нужна эта цифра. Рассмотрите возможность удаления этого 
+    поля и вычисления "на лету" или по сигналу.
+    """
     def save(self, *args, **kwargs):
         # Обновляем количество учеников при сохранении
         if self.pk:
@@ -156,7 +180,7 @@ class SubjectHours(models.Model):
     """Количество часов предмета в неделю для класса"""
     class_group = models.ForeignKey(
         ClassGroup,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='subject_hours',
         verbose_name='Класс'
     )
@@ -176,6 +200,10 @@ class SubjectHours(models.Model):
         verbose_name_plural = 'Нагрузки по предметам в классах'
         unique_together = ['class_group', 'subject']
         ordering = ['class_group', 'subject']
+        indexes = [
+            models.Index(fields=['class_group']),
+            models.Index(fields=['subject']),
+        ]
 
     def __str__(self):
         return f'{self.class_group} - {self.subject}: {self.hours_per_week} ч/нед'
@@ -197,7 +225,7 @@ class TeacherWorkload(models.Model):
     )
     quarter = models.ForeignKey(
         Quarter,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='teacher_workloads',
         verbose_name='Четверть'
     )
@@ -223,11 +251,15 @@ class TeacherWorkload(models.Model):
         verbose_name_plural = 'Нагрузки учителей'
         unique_together = ['teacher', 'subject_hours', 'quarter']
         ordering = ['quarter', 'teacher']
+        indexes = [
+            models.Index(fields=['teacher', 'quarter']),
+        ]
 
     def __str__(self):
         return f'{self.teacher} - {self.subject_hours.subject} ({self.quarter})'
 
     def clean(self):
+        """Можно дополнить проверкой, что substitute_for не равен самому teacher"""
         from django.core.exceptions import ValidationError
         # Проверяем, что нагрузка учителя не превышает общее количество часов по предмету
         if self.hours_per_week > self.subject_hours.hours_per_week:
@@ -264,13 +296,13 @@ class Lesson(models.Model):
     )
     class_group = models.ForeignKey(
         ClassGroup,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='lessons',
         verbose_name='Класс'
     )
     quarter = models.ForeignKey(
         Quarter,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='lessons',
         verbose_name='Четверть'
     )
@@ -307,7 +339,9 @@ class Lesson(models.Model):
 
     def __str__(self):
         return f'{self.subject} - {self.class_group} ({self.date})'
-
+    """
+    Lesson.save(): Хорошая валидация даты. Можно добавить проверку, что teacher входит в subject_areas предмета (lesson.subject)
+    """
     def save(self, *args, **kwargs):
         # Проверяем, что дата урока попадает в диапазон четверти
         if self.date < self.quarter.start_date or self.date > self.quarter.end_date:

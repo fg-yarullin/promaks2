@@ -1,0 +1,305 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Панель администратора{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="bi bi-shield-check"></i> Панель администратора
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="/admin/" target="_blank" class="btn btn-sm btn-outline-danger me-2">
+            <i class="bi bi-gear"></i> Админ-панель Django
+        </a>
+    </div>
+</div>
+
+<!-- Статистика -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0">Всего пользователей</h6>
+                        <h2 class="mb-0">{{ stats.total_users }}</h2>
+                    </div>
+                    <i class="bi bi-people" style="font-size: 2.5rem;"></i>
+                </div>
+                <div class="mt-2">
+                    <small>
+                        Уч: {{ stats.total_students }} |
+                        Уч: {{ stats.total_teachers }} |
+                        Род: {{ stats.total_parents }}
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0">Новых сегодня</h6>
+                        <h2 class="mb-0">{{ stats.new_users_today }}</h2>
+                    </div>
+                    <i class="bi bi-person-plus" style="font-size: 2.5rem;"></i>
+                </div>
+                <div class="mt-2">
+                    <small>Новых пользователей за сегодня</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0">Оценок сегодня</h6>
+                        <h2 class="mb-0">{{ stats.new_marks_today }}</h2>
+                    </div>
+                    <i class="bi bi-pencil-square" style="font-size: 2.5rem;"></i>
+                </div>
+                <div class="mt-2">
+                    <small>Выставлено оценок за сегодня</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0">Активных сессий</h6>
+                        <h2 class="mb-0">{% now "H" %}:{% now "i" %}</h2>
+                    </div>
+                    <i class="bi bi-clock" style="font-size: 2.5rem;"></i>
+                </div>
+                <div class="mt-2">
+                    <small>Время сервера</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Быстрые действия -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-lightning"></i> Быстрые действия</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 mb-2">
+                        <a href="/admin/users/customuser/" target="_blank" class="btn btn-outline-primary w-100">
+                            <i class="bi bi-people"></i> Управление пользователями
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <a href="/admin/school_structure/classgroup/" target="_blank" class="btn btn-outline-success w-100">
+                            <i class="bi bi-building"></i> Классы и группы
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <a href="/admin/school_structure/teacherworkload/" target="_blank" class="btn btn-outline-info w-100">
+                            <i class="bi bi-clock-history"></i> Нагрузка учителей
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <a href="/admin/journal/mark/" target="_blank" class="btn btn-outline-warning w-100">
+                            <i class="bi bi-journal-text"></i> Управление оценками
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Последние пользователи -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-person-plus"></i> Последние пользователи</h5>
+            </div>
+            <div class="card-body">
+                {% if recent_users %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>ФИО</th>
+                                    <th>Email</th>
+                                    <th>Роль</th>
+                                    <th>Дата регистрации</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in recent_users %}
+                                <tr>
+                                    <td>{{ user.get_full_name }}</td>
+                                    <td>{{ user.email }}</td>
+                                    <td>
+                                        <span class="badge bg-{% if user.role == 'ADMIN' %}danger{% elif user.role == 'TEACHER' %}success{% elif user.role == 'STUDENT' %}primary{% else %}secondary{% endif %}">
+                                            {{ user.get_role_display }}
+                                        </span>
+                                    </td>
+                                    <td>{{ user.date_joined|date:"d.m.Y H:i" }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="text-end">
+                        <a href="/admin/users/customuser/" target="_blank" class="btn btn-sm btn-outline-primary">
+                            Все пользователи →
+                        </a>
+                    </div>
+                {% else %}
+                    <div class="text-center text-muted py-3">
+                        <i class="bi bi-people" style="font-size: 2rem;"></i>
+                        <p class="mt-2">Пользователей пока нет</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Последние оценки -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-journal-text"></i> Последние оценки</h5>
+            </div>
+            <div class="card-body">
+                {% if recent_marks %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Ученик</th>
+                                    <th>Предмет</th>
+                                    <th>Оценка</th>
+                                    <th>Учитель</th>
+                                    <th>Дата</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for mark in recent_marks %}
+                                <tr>
+                                    <td>{{ mark.student.user.get_short_name }}</td>
+                                    <td>{{ mark.lesson.subject.title }}</td>
+                                    <td>
+                                        <span class="grade-badge grade-{{ mark.value }}" style="width: 30px; height: 30px; font-size: 0.9rem;">
+                                            {{ mark.value }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if mark.teacher %}
+                                            {{ mark.teacher.user.get_short_name }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ mark.created_at|date:"d.m H:i" }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="text-end">
+                        <a href="/admin/journal/mark/" target="_blank" class="btn btn-sm btn-outline-primary">
+                            Все оценки →
+                        </a>
+                    </div>
+                {% else %}
+                    <div class="text-center text-muted py-3">
+                        <i class="bi bi-journal-x" style="font-size: 2rem;"></i>
+                        <p class="mt-2">Оценок пока нет</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Системная информация -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-hdd"></i> Системная информация</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6><i class="bi bi-database"></i> База данных</h6>
+                                <ul class="list-unstyled">
+                                    <li><strong>Тип:</strong> SQLite</li>
+                                    <li><strong>Размер:</strong> <span id="db-size">Загрузка...</span></li>
+                                    <li><strong>Таблиц:</strong> 12</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6><i class="bi bi-calendar-check"></i> Учебный год</h6>
+                                <ul class="list-unstyled">
+                                    <li><strong>Текущий год:</strong> 2024-2025</li>
+                                    <li><strong>Текущая четверть:</strong> 1-я четверть</li>
+                                    <li><strong>Дата:</strong> {% now "d.m.Y H:i" %}</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6><i class="bi bi-gear"></i> Система</h6>
+                                <ul class="list-unstyled">
+                                    <li><strong>Версия Django:</strong> 5.2</li>
+                                    <li><strong>Режим:</strong>
+                                        <span class="badge bg-{% if DEBUG %}danger{% else %}success{% endif %}">
+                                            {% if DEBUG %}Разработка{% else %}Продакшн{% endif %}
+                                        </span>
+                                    </li>
+                                    <li><strong>Версия Python:</strong> 3.11+</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Функция для получения размера БД
+document.addEventListener('DOMContentLoaded', function() {
+    fetch('/admin/api/db-size/')  // Нужно будет создать этот endpoint
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('db-size').textContent = data.size;
+        })
+        .catch(() => {
+            document.getElementById('db-size').textContent = 'Недоступно';
+        });
+});
+</script>
+{% endblock %}

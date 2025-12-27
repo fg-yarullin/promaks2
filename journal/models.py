@@ -19,7 +19,7 @@ class Attendance(models.Model):
     )
     lesson = models.ForeignKey(
         Lesson,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='attendances',
         verbose_name='Урок'
     )
@@ -35,6 +35,10 @@ class Attendance(models.Model):
         verbose_name = 'Посещаемость'
         verbose_name_plural = 'Посещаемость'
         unique_together = ['student', 'lesson']
+        indexes = [
+            models.Index(fields=['student', 'lesson']),  # Уже есть unique_together, но индекс тоже создастся
+            models.Index(fields=['lesson', 'status']),  # Для быстрого подсчета отсутствующих на уроке
+        ]
 
     def __str__(self):
         return f'{self.student} - {self.lesson}: {self.get_status_display()}'
@@ -56,7 +60,7 @@ class Mark(models.Model):
     )
     lesson = models.ForeignKey(
         Lesson,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='marks',
         verbose_name='Урок'
     )
@@ -72,7 +76,7 @@ class Mark(models.Model):
     )
     comment = models.TextField(blank=True, verbose_name='Комментарий')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата выставления')
-    updated_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата обновления')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Дата обновления')
     teacher = models.ForeignKey(
         'users.TeacherProfile',
         on_delete=models.SET_NULL,
@@ -84,6 +88,10 @@ class Mark(models.Model):
         verbose_name = 'Оценка'
         verbose_name_plural = 'Оценки'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['student', 'created_at']),  # Для истории оценок ученика
+            models.Index(fields=['lesson', 'mark_type']),
+        ]
 
     def __str__(self):
         return f'{self.student} - {self.value} ({self.get_mark_type_display()})'
@@ -92,7 +100,7 @@ class Mark(models.Model):
 class Homework(models.Model):
     lesson = models.ForeignKey(
         Lesson,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='homeworks',
         verbose_name='Урок'
     )
@@ -110,6 +118,9 @@ class Homework(models.Model):
         verbose_name = 'Домашнее задание'
         verbose_name_plural = 'Домашние задания'
         ordering = ['deadline']
+        indexes = [
+            models.Index(fields=['lesson', 'deadline']),  # Для поиска актуальных ДЗ по классу
+        ]
 
     def __str__(self):
         return f'ДЗ для {self.lesson.class_group} до {self.deadline}'

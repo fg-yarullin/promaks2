@@ -1,0 +1,85 @@
+body {
+    background-color: #f8f9fa;
+    padding-top: 56px;
+}
+
+.sidebar {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    bottom: 0;
+    z-index: 100;
+    padding: 20px 0;
+    background-color: #343a40;
+}
+
+.sidebar-sticky {
+    position: relative;
+    top: 0;
+    height: calc(100vh - 56px);
+    padding-top: .5rem;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.sidebar .nav-link {
+    color: #adb5bd;
+    padding: 0.5rem 1rem;
+}
+
+.sidebar .nav-link:hover {
+    color: #fff;
+    background-color: rgba(255, 255, 255, .1);
+}
+
+.sidebar .nav-link.active {
+    color: #fff;
+    background-color: #007bff;
+}
+
+.main-content {
+    margin-left: 220px;
+    padding: 20px;
+}
+
+.stat-card {
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, .1);
+}
+
+.grade-badge {
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-weight: bold;
+}
+
+.grade-5 {
+    background-color: #28a745;
+    color: white;
+}
+
+.grade-4 {
+    background-color: #20c997;
+    color: white;
+}
+
+.grade-3 {
+    background-color: #ffc107;
+    color: black;
+}
+
+.grade-2 {
+    background-color: #fd7e14;
+    color: white;
+}
+
+.grade-1 {
+    background-color: #dc3545;
+    color: white;
+}

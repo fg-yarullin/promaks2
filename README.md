@@ -66,3 +66,48 @@
     git remote add origin https://github.com/fg-yarullin/promaks2.git
     git branch -M main
     git push -u origin main
+
+### Структура проекта    
+    tree -I '__pycache__|*.pyc|venv|.git' -L 3
+
+## Создайте остальные шаблоны по аналогии с teacher.html:
+
+    templates/dashboard/student.html - для учеников
+    
+    templates/dashboard/parent.html - для родителей
+    
+    templates/dashboard/admin.html - для администраторов
+    
+    templates/users/register.html - форма регистрации
+    
+    templates/users/profile.html - страница профиля
+
+## Настройте статические файлы:
+
+    Добавьте логотип в static/img/logo.png
+    
+    Создайте файл static/css/custom.css для дополнительных стилей
+
+## Добавьте функционал:
+
+    CRUD для оценок, посещаемости, домашних заданий
+    
+    Расписание уроков
+    
+    Отчеты и статистику
+
+## Улучшите безопасность:
+
+    Добавьте captcha на форму регистрации
+    
+    Ограничьте количество попыток входа
+    
+    Настройте HTTPS для production
+
+## Оптимизируйте производительность:
+
+    Кэширование часто запрашиваемых данных
+    
+    Оптимизация запросов к БД
+    
+    Сжатие статических файлов

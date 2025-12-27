@@ -11,3 +11,11 @@ class IsStudent(permissions.BasePermission):
 class IsStudentOrTeacher(permissions.BasePermission):
     def has_permission(self, request, view):
         return request.user.role in ['STUDENT', 'TEACHER']
+
+class IsParent(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return request.user.role == 'PARENT'
+
+class IsAdmin(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return request.user.role == 'ADMIN'

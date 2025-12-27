@@ -1,0 +1,152 @@
+{% extends 'layouts/base.html' %}
+
+{% block auth_content %}
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-5">
+        <div class="card shadow">
+            <div class="card-header bg-warning">
+                <h4 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Завершение регистрации</h4>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-4">
+                    <i class="bi bi-person-check" style="font-size: 4rem; color: #6c757d;"></i>
+                    <h3 class="mt-3">Привет, {{ user.get_full_name }}!</h3>
+                    <p class="text-muted">Для завершения регистрации выберите вашу роль в системе</p>
+                </div>
+                
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="mb-4">
+                        <label class="form-label"><strong>Выберите тип учетной записи:</strong></label>
+                        
+                        <div class="list-group">
+                            <label class="list-group-item list-group-item-action">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="role" value="STUDENT" id="roleStudent">
+                                    <div class="d-flex w-100 justify-content-between">
+                                        <div>
+                                            <h6 class="mb-1"><i class="bi bi-person-video3 text-primary"></i> Ученик</h6>
+                                            <p class="mb-1 small text-muted">
+                                                Полный доступ к своему расписанию, оценкам, домашним заданиям
+                                            </p>
+                                        </div>
+                                        <i class="bi bi-check-lg text-success d-none" id="checkStudent"></i>
+                                    </div>
+                                </div>
+                            </label>
+                            
+                            <label class="list-group-item list-group-item-action">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="role" value="TEACHER" id="roleTeacher">
+                                    <div class="d-flex w-100 justify-content-between">
+                                        <div>
+                                            <h6 class="mb-1"><i class="bi bi-person-check text-success"></i> Учитель</h6>
+                                            <p class="mb-1 small text-muted">
+                                                Выставление оценок, ведение журнала, управление уроками
+                                            </p>
+                                        </div>
+                                        <i class="bi bi-check-lg text-success d-none" id="checkTeacher"></i>
+                                    </div>
+                                </div>
+                            </label>
+                            
+                            <label class="list-group-item list-group-item-action">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="role" value="PARENT" id="roleParent">
+                                    <div class="d-flex w-100 justify-content-between">
+                                        <div>
+                                            <h6 class="mb-1"><i class="bi bi-people-fill text-info"></i> Родитель</h6>
+                                            <p class="mb-1 small text-muted">
+                                                Просмотр успеваемости и посещаемости ваших детей
+                                            </p>
+                                        </div>
+                                        <i class="bi bi-check-lg text-success d-none" id="checkParent"></i>
+                                    </div>
+                                </div>
+                            </label>
+                            
+                            {% if user.is_superuser %}
+                            <label class="list-group-item list-group-item-action">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="role" value="ADMIN" id="roleAdmin">
+                                    <div class="d-flex w-100 justify-content-between">
+                                        <div>
+                                            <h6 class="mb-1"><i class="bi bi-shield-check text-danger"></i> Администратор</h6>
+                                            <p class="mb-1 small text-muted">
+                                                Полный доступ к управлению системой и всеми данными
+                                            </p>
+                                        </div>
+                                        <i class="bi bi-check-lg text-success d-none" id="checkAdmin"></i>
+                                    </div>
+                                </div>
+                            </label>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>Внимание!</strong> Выбор роли можно будет изменить только через администратора системы.
+                    </div>
+                    
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-success btn-lg" id="submitBtn" disabled>
+                            <i class="bi bi-check-circle"></i> Подтвердить выбор
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const radios = document.querySelectorAll('input[name="role"]');
+    const submitBtn = document.getElementById('submitBtn');
+    const checkIcons = {
+        'STUDENT': document.getElementById('checkStudent'),
+        'TEACHER': document.getElementById('checkTeacher'),
+        'PARENT': document.getElementById('checkParent'),
+        'ADMIN': document.getElementById('checkAdmin')
+    };
+    
+    // Скрыть все иконки галочек
+    Object.values(checkIcons).forEach(icon => {
+        if (icon) icon.classList.add('d-none');
+    });
+    
+    radios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            // Включить кнопку
+            submitBtn.disabled = false;
+            
+            // Показать галочку у выбранного элемента
+            Object.values(checkIcons).forEach(icon => {
+                if (icon) icon.classList.add('d-none');
+            });
+            
+            const checkIcon = checkIcons[this.value];
+            if (checkIcon) {
+                checkIcon.classList.remove('d-none');
+            }
+            
+            // Добавить класс активного элемента
+            document.querySelectorAll('.list-group-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            this.closest('.list-group-item').classList.add('active');
+        });
+    });
+    
+    // Автоматический выбор для демонстрации (можно убрать)
+    setTimeout(() => {
+        document.getElementById('roleStudent').checked = true;
+        document.getElementById('roleStudent').dispatchEvent(new Event('change'));
+    }, 500);
+});
+</script>
+{% endblock %}

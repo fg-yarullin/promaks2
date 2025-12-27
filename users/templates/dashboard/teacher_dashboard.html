@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Панель учителя{% endblock %}
+
+{% block content %}
+<h1>Панель учителя</h1>
+<div class="row mt-4">
+    <div class="col-md-8">
+        <h3>Ближайшие уроки</h3>
+        <table class="table">
+            <thead><tr><th>Дата</th><th>Класс</th><th>Предмет</th><th>Тема</th></tr></thead>
+            <tbody>
+            {% for lesson in upcoming_lessons %}
+                <tr>
+                    <td>{{ lesson.date|date:"d.m.Y" }}</td>
+                    <td>{{ lesson.class_group }}</td>
+                    <td>{{ lesson.subject.title }}</td>
+                    <td>{{ lesson.topic|default:"-" }}</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="4">Нет предстоящих уроков</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">Быстрые действия</div>
+            <div class="card-body">
+                <a href="{% url 'mark_create' %}" class="btn btn-primary w-100 mb-2">Выставить оценку</a>
+                <a href="{% url 'attendance_create' %}" class="btn btn-secondary w-100 mb-2">Отметить посещаемость</a>
+                <a href="{% url 'homework_create' %}" class="btn btn-success w-100">Задать ДЗ</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

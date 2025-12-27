@@ -1,0 +1,255 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Панель ученика{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="bi bi-person-video3"></i> Панель ученика
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <span class="btn btn-sm btn-outline-primary">
+                Класс: <strong>{{ student.class_group }}</strong>
+            </span>
+        </div>
+    </div>
+</div>
+
+<!-- Общая информация -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Информация</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>ФИО:</strong> {{ student.user.get_full_name }}</p>
+                        <p><strong>Класс:</strong> {{ student.class_group }}</p>
+                        <p><strong>Классный руководитель:</strong> 
+                            {% if student.class_group.classroom_teacher %}
+                                {{ student.class_group.classroom_teacher.user.get_full_name }}
+                            {% else %}
+                                Не назначен
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Год поступления:</strong> {{ student.admission_year }}</p>
+                        <p><strong>Дата рождения:</strong> 
+                            {% if student.birth_date %}
+                                {{ student.birth_date|date:"d.m.Y" }}
+                            {% else %}
+                                Не указана
+                            {% endif %}
+                        </p>
+                        <p><strong>Учебный год:</strong> {{ student.class_group.academic_year }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-primary text-white">
+            <div class="card-body text-center">
+                <h1 class="display-4">
+                    {% if subject_grades %}
+                        {% with avg=subject_grades.0.avg_grade %}
+                            {{ avg|floatformat:1 }}
+                        {% endwith %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </h1>
+                <p class="mb-0">Средний балл</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Сегодняшнее расписание -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-calendar-day"></i> Расписание на сегодня ({{ today|date:"d.m.Y" }})
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if schedule_today %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>№</th>
+                                    <th>Время</th>
+                                    <th>Предмет</th>
+                                    <th>Учитель</th>
+                                    <th>Кабинет</th>
+                                    <th>Тема урока</th>
+                                    <th>Тип</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for lesson in schedule_today %}
+                                <tr>
+                                    <td>{{ lesson.lesson_number }}</td>
+                                    <td>{{ lesson.start_time|time:"H:i" }} - {{ lesson.end_time|time:"H:i" }}</td>
+                                    <td>{{ lesson.subject.title }}</td>
+                                    <td>{{ lesson.teacher.user.get_full_name }}</td>
+                                    <td>{{ lesson.classroom }}</td>
+                                    <td>{{ lesson.topic|default:"-"|truncatechars:30 }}</td>
+                                    <td>
+                                        <span class="badge bg-{% if lesson.lesson_type == 'TEST' %}danger{% elif lesson.lesson_type == 'LAB' %}info{% else %}secondary{% endif %}">
+                                            {{ lesson.get_lesson_type_display }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-calendar-x" style="font-size: 3rem;"></i>
+                        <p class="mt-2">На сегодня уроков нет</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Последние оценки -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-journal-text"></i> Последние оценки</h5>
+                <a href="#" class="btn btn-sm btn-outline-primary">Все оценки →</a>
+            </div>
+            <div class="card-body">
+                {% if recent_marks %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Дата</th>
+                                    <th>Предмет</th>
+                                    <th>Оценка</th>
+                                    <th>Тип</th>
+                                    <th>Учитель</th>
+                                    <th>Комментарий</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for mark in recent_marks %}
+                                <tr>
+                                    <td>{{ mark.created_at|date:"d.m.Y" }}</td>
+                                    <td>{{ mark.lesson.subject.title }}</td>
+                                    <td>
+                                        <span class="grade-badge grade-{{ mark.value }}">
+                                            {{ mark.value }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{% if mark.mark_type == 'EXAM' %}danger{% elif mark.mark_type == 'TEST' %}warning{% else %}info{% endif %}">
+                                            {{ mark.get_mark_type_display }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if mark.teacher %}
+                                            {{ mark.teacher.user.get_short_name }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ mark.comment|default:"-"|truncatechars:30 }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-journal-x" style="font-size: 3rem;"></i>
+                        <p class="mt-2">Оценок пока нет</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Домашние задания -->
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-book"></i> Ближайшие ДЗ</h5>
+            </div>
+            <div class="card-body">
+                {% if upcoming_homework %}
+                    <div class="list-group list-group-flush">
+                        {% for hw in upcoming_homework %}
+                        <div class="list-group-item">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">{{ hw.lesson.subject.title }}</h6>
+                                <small class="text-{% if hw.deadline.date == today %}danger{% elif hw.deadline.date == tomorrow %}warning{% else %}muted{% endif %}">
+                                    {{ hw.deadline|date:"d.m.Y H:i" }}
+                                </small>
+                            </div>
+                            <p class="mb-1 small">{{ hw.content|truncatechars:50 }}</p>
+                            <div class="mt-2">
+                                <a href="#" class="btn btn-sm btn-outline-primary">Подробнее</a>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center text-muted py-3">
+                        <i class="bi bi-book" style="font-size: 2rem;"></i>
+                        <p class="mt-2">Домашних заданий нет</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Успеваемость по предметам -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-graph-up"></i> Успеваемость по предметам</h5>
+            </div>
+            <div class="card-body">
+                {% if subject_grades %}
+                    <div class="row">
+                        {% for subject in subject_grades %}
+                        <div class="col-md-3 mb-3">
+                            <div class="card">
+                                <div class="card-body text-center">
+                                    <h5>{{ subject.lesson__subject__title }}</h5>
+                                    <div class="display-4 {% if subject.avg_grade >= 4.5 %}text-success{% elif subject.avg_grade >= 3.5 %}text-warning{% else %}text-danger{% endif %}">
+                                        {{ subject.avg_grade|floatformat:1 }}
+                                    </div>
+                                    <p class="text-muted mb-0">{{ subject.count }} оценок</p>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-graph-up" style="font-size: 3rem;"></i>
+                        <p class="mt-2">Нет данных для отображения</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

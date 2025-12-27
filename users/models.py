@@ -11,7 +11,7 @@ class CustomUser(AbstractUser):
         TEACHER = 'TEACHER', 'Учитель'
         STUDENT = 'STUDENT', 'Ученик'
         PARENT = 'PARENT', 'Родитель'
-        EMPTY = 'EMPTY', 'Без роли'
+        EMPTY = 'EMPTY', 'Нет роли'
 
     role = models.CharField(
         max_length=20,

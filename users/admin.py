@@ -31,5 +31,10 @@ class TeacherProfileAdmin(admin.ModelAdmin):
 
 @admin.register(ParentProfile)
 class ParentProfileAdmin(admin.ModelAdmin):
-    list_display = ('user',)
+    list_display = ('user', 'children_count')
     filter_horizontal = ('children',)
+
+    def children_count(self, obj):
+        return obj.children.count()
+
+    children_count.short_description = 'Количество детей'
