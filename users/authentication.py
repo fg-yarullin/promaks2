@@ -1,15 +1,41 @@
-# from django.contrib.auth.models import User
-from .models import CustomUser as User
+# authentication.py
 
-class EmailAuthBackend:
-    def authenticate(self, request, username=None, password=None):
+from django.contrib.auth import get_user_model
+from django.db.models import Q
+from django.contrib.auth.forms import AuthenticationForm
+
+User = get_user_model()
+
+
+class EmailOrUsernameBackend(AuthenticationForm):
+    """
+    Кастомный бэкенд аутентификации по email ИЛИ username.
+    """
+
+    def authenticate(self, request, username=None, password=None, **kwargs):
+        if username is None or password is None:
+            return None
+
         try:
-            user = User.objects.get(email=username)
-            if user.check_password(password) and user.is_active:
-                return user
+            # Ищем пользователя по email или username
+            user = User.objects.get(
+                Q(email__iexact=username) | Q(username__iexact=username)
+            )
+        except User.DoesNotExist:
+            # Возвращаем None, если пользователь не найден
+            # Django попробует следующий бэкенд
             return None
-        except (User.DoesNotExist, User.MultipleObjectsReturned):
-            return None
+        except User.MultipleObjectsReturned:
+            # Если нашли несколько пользователей, берем первого
+            user = User.objects.filter(
+                Q(email__iexact=username) | Q(username__iexact=username)
+            ).first()
+
+        # Проверяем пароль
+        if user and user.check_password(password):
+            return user
+
+        return None
 
     def get_user(self, user_id):
         try:

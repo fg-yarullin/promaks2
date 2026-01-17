@@ -1,49 +1,4 @@
-from django.shortcuts import render
-
-from django.contrib.auth.decorators import login_required
-from django.utils.decorators import method_decorator
-from django.views.generic import TemplateView
-# from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from .permissions import IsTeacher, IsStudent, IsAdmin, IsParent
-
-# View для админ-панели
-# class AdminDashboardView(APIView):
-#     permission_classes = [IsAuthenticated, IsAdmin]
-#
-#     def get(self, request):
-#         # Логика для админа
-#         return Response({"message": "Welcome Admin"})
-#
-#
-# # View для учителя
-# class TeacherDashboardView(APIView):
-#     permission_classes = [IsAuthenticated, IsTeacher]
-#
-#     def get(self, request):
-#         # Логика для учителя
-#         return Response({"message": "Welcome Teacher"})
-#
-#
-# # View для ученика
-# class StudentDashboardView(APIView):
-#     permission_classes = [IsAuthenticated, IsStudent]
-#
-#     def get(self, request):
-#         # Логика для ученика
-#         return Response({"message": "Welcome Student"})
-#
-#
-# # View для родителя
-# class ParentDashboardView(APIView):
-#     permission_classes = [IsAuthenticated, IsParent]  # Нужно создать IsParent
-#
-#     def get(self, request):
-#         # Логика для родителя
-#         return Response({"message": "Welcome Parent"})
-
-
+# users/view.py
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -55,30 +10,35 @@ from django.db.models import Count, Avg, Q
 from datetime import datetime, timedelta
 import calendar
 
-from .forms import EmailAuthenticationForm, UserRegistrationForm, StudentProfileForm, TeacherProfileForm
+from .forms import EmailOrUsernameAuthenticationForm, UserRegistrationForm, StudentProfileForm, TeacherProfileForm
 from .models import CustomUser, StudentProfile, TeacherProfile, ParentProfile
-from school_structure.models import Lesson, ClassGroup, Subject, Quarter
+from school_structure.models import Lesson, ClassGroup, Subject, Quarter, AcademicYear
 from journal.models import Mark, Attendance, Homework
+
+from .decorators import (
+    role_required, teacher_required, student_required,
+    parent_required, admin_required, staff_required
+)
 
 
 # ==================== ДЕКОРАТОРЫ ДЛЯ ПРОВЕРКИ РОЛЕЙ ====================
 
-def role_required(*roles):
-    """Декоратор для проверки роли пользователя"""
-
-    def wrapper(user):
-        if user.is_authenticated:
-            return user.role in roles
-        return False
-
-    return user_passes_test(wrapper, login_url='/users/login/')
-
-
-teacher_required = role_required('TEACHER')
-student_required = role_required('STUDENT')
-parent_required = role_required('PARENT')
-admin_required = role_required('ADMIN')
-staff_required = user_passes_test(lambda u: u.is_staff, login_url='/users/login/')
+# def role_required(*roles):
+#     """Декоратор для проверки роли пользователя"""
+#
+#     def wrapper(user):
+#         if user.is_authenticated:
+#             return user.role in roles
+#         return False
+#
+#     return user_passes_test(wrapper, login_url='/users/login/')
+#
+#
+# teacher_required = role_required('TEACHER')
+# student_required = role_required('STUDENT')
+# parent_required = role_required('PARENT')
+# admin_required = role_required('ADMIN')
+# staff_required = user_passes_test(lambda u: u.is_staff, login_url='/users/login/')
 
 
 # ==================== VIEWS АУТЕНТИФИКАЦИИ ====================
@@ -89,11 +49,11 @@ class LoginView(View):
     def get(self, request):
         if request.user.is_authenticated:
             return redirect(self.get_redirect_url(request.user))
-        form = EmailAuthenticationForm()
+        form = EmailOrUsernameAuthenticationForm()
         return render(request, self.template_name, {'form': form})
 
     def post(self, request):
-        form = EmailAuthenticationForm(request, data=request.POST)
+        form = EmailOrUsernameAuthenticationForm(request, data=request.POST)
         if form.is_valid():
             user = form.get_user()
             login(request, user)
@@ -124,7 +84,7 @@ class LogoutView(View):
     def get(self, request):
         logout(request)
         messages.info(request, 'Вы успешно вышли из системы')
-        return redirect('login')
+        return redirect('users:home')
 
 
 class RegisterView(View):
@@ -404,6 +364,7 @@ class AdminDashboardView(TemplateView):
         # Последние действия
         recent_users = CustomUser.objects.all().order_by('-date_joined')[:5]
         recent_marks = Mark.objects.all().select_related('student__user', 'teacher__user').order_by('-created_at')[:5]
+        academic_year = AcademicYear.objects.get(is_current=True)
 
         context.update({
             'stats': {
@@ -416,6 +377,7 @@ class AdminDashboardView(TemplateView):
             },
             'recent_users': recent_users,
             'recent_marks': recent_marks,
+            'academic_year': academic_year.year,
         })
         return context
 

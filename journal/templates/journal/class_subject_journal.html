@@ -1,0 +1,681 @@
+{% extends 'layouts/base.html' %}
+{% load journal_tags %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Заголовок с навигацией -->
+    <div class="row mb-4">
+        <div class="col">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item">
+                        <a href="{% url 'journal:teacher_journal' %}">Журналы</a>
+                    </li>
+                    <li class="breadcrumb-item active">
+                        {{ class_group.name }} - {{ subject.title }}
+                    </li>
+                </ol>
+            </nav>
+
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="mb-0">
+                        <i class="bi bi-journal-text"></i>
+                        {{ subject.title }}
+                    </h2>
+                    <p class="text-muted mb-0">
+                        Класс: {{ class_group.name }} |
+                        Четверть: {{ quarter.name }}
+                    </p>
+                </div>
+                <div class="btn-group">
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary dropdown-toggle" type="button"
+                                data-bs-toggle="dropdown">
+                            <i class="bi bi-calendar-week"></i> {{ quarter.name }}
+                        </button>
+                        <ul class="dropdown-menu">
+                            {% for q in other_quarters %}
+                            <li>
+                                <a class="dropdown-item"
+                                   href="{% url 'journal:class_journal_quarter' class_group.id subject.id q.id %}">
+                                    {{ q.name }}
+                                </a>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    <div class="dropdown ms-2">
+                        <button class="btn btn-outline-primary dropdown-toggle" type="button"
+                                data-bs-toggle="dropdown">
+                            <i class="bi bi-book"></i> {{ subject.short_title|default:subject.title }}
+                        </button>
+                        <ul class="dropdown-menu">
+                            {% for subj in class_subjects %}
+                            <li>
+                                <a class="dropdown-item"
+                                   href="{% url 'journal:class_journal' class_group.id subj.id %}">
+                                    {{ subj.title }}
+                                </a>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    <a href="{% url 'journal:quarterly_grades' class_group.id subject.id quarter.id %}"
+                       class="btn btn-warning ms-2">
+                        <i class="bi bi-calendar-week"></i> Четвертные
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Информационная панель -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">{{ students|length }}</h5>
+                    <p class="card-text text-muted">Учеников в классе</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">{{ lessons|length }}</h5>
+                    <p class="card-text text-muted">Уроков в четверти</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    {% with total_avg=student_stats|dictsortreversed:"avg_grade"|first %}
+                    <h5 class="card-title">
+                        {% if total_avg.avg_grade %}
+                        {{ total_avg.avg_grade|floatformat:2 }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </h5>
+                    {% endwith %}
+                    <p class="card-text text-muted">Максимальный средний балл</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        {% if quarter.end_date < today %}
+                        Завершена
+                        {% else %}
+                        Активна
+                        {% endif %}
+                    </h5>
+                    <p class="card-text text-muted">Статус четверти</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Основная таблица журнала -->
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 70vh; overflow-y: auto;">
+                <table class="table table-bordered table-hover mb-0" id="journalTable">
+                    <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+                        <tr>
+                            <th style="min-width: 200px; position: sticky; left: 0; background: white; z-index: 2;">
+                                Ученик
+                            </th>
+                            <th style="min-width: 100px; position: sticky; left: 200px; background: white; z-index: 2;">
+                                Средний
+                            </th>
+                            {% for lesson in lessons %}
+                            <th style="min-width: 120px; text-align: center;">
+                                <div class="small">{{ lesson.date|date:"d.m" }}</div>
+                                <div class="very-small text-muted">ур. {{ lesson.lesson_number }}</div>
+                                {% if lesson.topic %}
+                                <div class="very-small" title="{{ lesson.topic }}">
+                                    {{ lesson.topic|truncatechars:15 }}
+                                </div>
+                                {% endif %}
+                            </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for stats in student_stats %}
+                        <tr data-student-id="{{ stats.student.id }}">
+                            <td style="position: sticky; left: 0; background: white;">
+                                <strong>{{ stats.student.user.last_name }} {{ stats.student.user.first_name }}</strong>
+                                {% if stats.student.user.patronymic %}
+                                <br><small class="text-muted">{{ stats.student.user.patronymic }}</small>
+                                {% endif %}
+                            </td>
+                            <td style="position: sticky; left: 200px; background: white; text-align: center;">
+                                <span class="badge
+                                    {% if stats.avg_grade >= 4.5 %}bg-success
+                                    {% elif stats.avg_grade >= 3.5 %}bg-primary
+                                    {% elif stats.avg_grade >= 2.5 %}bg-warning
+                                    {% elif stats.avg_grade %}bg-danger
+                                    {% else %}bg-secondary{% endif %}"
+                                      id="avg-{{ stats.student.id }}">
+                                    {{ stats.avg_grade|default:"-"|floatformat:2 }}
+                                </span>
+                                <br>
+                                <small class="text-muted">{{ stats.marks_count }} оц.</small>
+                            </td>
+
+                            {% for lesson in lessons %}
+                            <td class="grade-cell text-center"
+                                data-student-id="{{ stats.student.id }}"
+                                data-lesson-id="{{ lesson.id }}"
+                                style="cursor: pointer;">
+
+                                {% with mark=marks_dict|get_item:stats.student.id|get_item:lesson.id %}
+                                {% with attendance=attendance_dict|get_item:stats.student.id|get_item:lesson.id %}
+
+                                <div class="d-flex flex-column align-items-center py-1">
+                                    <!-- Оценка -->
+                                    <div class="mark-display mb-1">
+                                        {% if mark %}
+                                        <span class="badge
+                                            {% if mark.value == 5 %}bg-success
+                                            {% elif mark.value == 4 %}bg-primary
+                                            {% elif mark.value == 3 %}bg-warning
+                                            {% else %}bg-danger{% endif %}"
+                                              data-bs-toggle="tooltip"
+                                              title="{{ mark.get_mark_type_display }}{% if mark.comment %}: {{ mark.comment }}{% endif %}">
+                                            {{ mark.value }}
+                                        </span>
+                                        {% else %}
+                                        <span class="text-muted grade-placeholder">-</span>
+                                        {% endif %}
+                                    </div>
+
+                                    <!-- Посещаемость -->
+                                    <div class="attendance-display">
+                                        {% if attendance and attendance.status != 'PRESENT' %}
+                                        <span class="badge
+                                            {% if attendance.status == 'ABSENT' %}bg-danger
+                                            {% elif attendance.status == 'ILL' %}bg-info
+                                            {% elif attendance.status == 'LATE' %}bg-warning{% endif %}"
+                                              data-bs-toggle="tooltip"
+                                              title="{{ attendance.get_status_display }}{% if attendance.note %}: {{ attendance.note }}{% endif %}">
+                                            {{ attendance.get_status_display|slice:":1" }}
+                                        </span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+
+                                {% endwith %}
+                                {% endwith %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="{{ lessons|length|add:2 }}" class="text-center text-muted py-4">
+                                <i class="bi bi-people" style="font-size: 2rem;"></i>
+                                <p class="mt-2">В классе нет учеников</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Легенда -->
+    <div class="mt-3">
+        <div class="card">
+            <div class="card-body py-2">
+                <div class="d-flex flex-wrap gap-3">
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-success me-2">5</span>
+                        <small>Отлично</small>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-primary me-2">4</span>
+                        <small>Хорошо</small>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-warning me-2">3</span>
+                        <small>Удовлетворительно</small>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-danger me-2">2</span>
+                        <small>Неудовлетворительно</small>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-secondary me-2">-</span>
+                        <small>Нет оценки</small>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-danger me-2">О</span>
+                        <small>Отсутствовал</small>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-info me-2">Б</span>
+                        <small>Болел</small>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-warning me-2">О</span>
+                        <small>Опоздал</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно редактирования -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Редактирование</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editForm">
+                    <input type="hidden" id="editStudentId">
+                    <input type="hidden" id="editLessonId">
+
+                    <div class="mb-3">
+                        <label class="form-label" for="editMarkValue">Оценка</label>
+                        <select class="form-select" id="editMarkValue">
+                            <option value="">- Без оценки -</option>
+                            <option value="5">5 (Отлично)</option>
+                            <option value="4">4 (Хорошо)</option>
+                            <option value="3">3 (Удовлетворительно)</option>
+                            <option value="2">2 (Неудовлетворительно)</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="editMarkType">Тип оценки</label>
+                        <select class="form-select" id="editMarkType">
+                            {% for value, label in mark_types %}
+                            <option value="{{ value }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="editMarkComment">Комментарий к оценке</label>
+                        <textarea class="form-control" id="editMarkComment" rows="2"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="editAttendanceStatus">Посещаемость</label>
+                        <select class="form-select" id="editAttendanceStatus">
+                            {% for value, label in attendance_statuses %}
+                            <option value="{{ value }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="editAttendanceNote">Примечание к посещаемости</label>
+                        <textarea class="form-control" id="editAttendanceNote" rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-danger" id="deleteMarkBtn">Удалить оценку</button>
+                <button type="button" class="btn btn-primary" id="saveEditBtn">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.very-small {
+    font-size: 0.7rem;
+}
+
+.grade-cell:hover {
+    background-color: rgba(0, 123, 255, 0.1) !important;
+}
+
+#journalTable th {
+    white-space: nowrap;
+}
+
+#journalTable td {
+    vertical-align: middle;
+}
+
+.grade-placeholder {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    let currentCell = null;
+    let currentMark = null;
+    let currentAttendance = null;
+
+    // Инициализация тултипов
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
+    // Обработка клика по ячейке
+    $('.grade-cell').click(function() {
+        currentCell = $(this);
+        const studentId = currentCell.data('student-id');
+        const lessonId = currentCell.data('lesson-id');
+
+        // Заполняем форму текущими значениями
+        $('#editStudentId').val(studentId);
+        $('#editLessonId').val(lessonId);
+
+        // Получаем текущие данные из ячейки
+        const markElement = currentCell.find('.mark-display .badge');
+        const attendanceElement = currentCell.find('.attendance-display .badge');
+
+        // Сохраняем текущие значения для возможного восстановления
+        currentMark = markElement.length ? markElement.text().trim() : null;
+
+        // Устанавливаем текущие значения в форму
+        if (currentMark) {
+            $('#editMarkValue').val(currentMark);
+            // Пытаемся определить тип оценки из тултипа
+            const markType = markElement.attr('title') || '';
+            if (markType.includes('Классная работа')) $('#editMarkType').val('CLASSWORK');
+            else if (markType.includes('Домашняя работа')) $('#editMarkType').val('HOMEWORK');
+            else if (markType.includes('Контрольная')) $('#editMarkType').val('TEST');
+        } else {
+            $('#editMarkValue').val('');
+        }
+
+        $('#editMarkComment').val('');
+
+        if (attendanceElement.length) {
+            // Определяем статус по цвету баджа и сохраняем его
+            const badgeClass = attendanceElement.attr('class');
+            currentAttendance = attendanceElement.attr('title') || '';
+            let status = 'PRESENT';
+            if (badgeClass.includes('bg-danger')) status = 'ABSENT';
+            else if (badgeClass.includes('bg-info')) status = 'ILL';
+            else if (badgeClass.includes('bg-warning')) status = 'LATE';
+            $('#editAttendanceStatus').val(status);
+        } else {
+            currentAttendance = null;
+            $('#editAttendanceStatus').val('PRESENT');
+        }
+
+        $('#editAttendanceNote').val('');
+
+        // Показываем модальное окно
+        const editModal = new bootstrap.Modal(document.getElementById('editModal'));
+        editModal.show();
+    });
+
+    // Сохранение изменений
+    $('#saveEditBtn').click(function() {
+        const studentId = $('#editStudentId').val();
+        const lessonId = $('#editLessonId').val();
+        const markValue = $('#editMarkValue').val();
+        const markType = $('#editMarkType').val();
+        const markComment = $('#editMarkComment').val();
+        const attendanceStatus = $('#editAttendanceStatus').val();
+        const attendanceNote = $('#editAttendanceNote').val();
+
+        console.log('Сохранение:', {
+            studentId, lessonId, markValue, markType,
+            attendanceStatus, attendanceNote
+        });
+
+        $.ajax({
+            url: '{% url "journal:update_mark" %}',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                student_id: studentId,
+                lesson_id: lessonId,
+                mark_value: markValue || null,  // Отправляем null если пусто
+                mark_type: markType,
+                comment: markComment,
+                attendance_status: attendanceStatus,
+                attendance_note: attendanceNote
+            }),
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            success: function(response) {
+                console.log('Ответ сервера:', response);
+                if (response.success) {
+                    // Обновляем ячейку
+                    updateCellDisplay(currentCell, response);
+
+                    // Обновляем средний балл
+                    if (response.average_grade !== undefined) {
+                        const avgBadge = $(`#avg-${studentId}`);
+                        avgBadge.text(response.average_grade !== null ?
+                                     response.average_grade.toFixed(2) : '-');
+
+                        // Обновляем цвет баджа
+                        avgBadge.removeClass('bg-success bg-primary bg-warning bg-danger bg-secondary');
+
+                        if (response.average_grade >= 4.5) {
+                            avgBadge.addClass('bg-success');
+                        } else if (response.average_grade >= 3.5) {
+                            avgBadge.addClass('bg-primary');
+                        } else if (response.average_grade >= 2.5) {
+                            avgBadge.addClass('bg-warning');
+                        } else if (response.average_grade > 0) {
+                            avgBadge.addClass('bg-danger');
+                        } else {
+                            avgBadge.addClass('bg-secondary');
+                        }
+                    }
+
+                    // Закрываем модальное окно
+                    bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+
+                    showToast('Изменения сохранены', 'success');
+
+                    // Сбрасываем текущие значения
+                    currentMark = null;
+                    currentAttendance = null;
+                } else {
+                    showToast('Ошибка: ' + response.error, 'error');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('AJAX ошибка:', status, error);
+                showToast('Ошибка соединения с сервером: ' + error, 'error');
+            }
+        });
+    });
+
+    // Удаление оценки (отдельная кнопка)
+    $('#deleteMarkBtn').click(function() {
+        if (confirm('Удалить оценку и сбросить посещаемость?')) {
+            const studentId = $('#editStudentId').val();
+            const lessonId = $('#editLessonId').val();
+
+            console.log('Удаление оценки:', { studentId, lessonId });
+
+            $.ajax({
+                url: '{% url "journal:update_mark" %}',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    student_id: studentId,
+                    lesson_id: lessonId,
+                    mark_value: null,  // Явно отправляем null
+                    attendance_status: 'PRESENT'  // Сбрасываем посещаемость
+                }),
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                success: function(response) {
+                    console.log('Ответ при удалении:', response);
+                    if (response.success) {
+                        updateCellDisplay(currentCell, response);
+
+                        // Обновляем средний балл
+                        if (response.average_grade !== undefined) {
+                            const avgBadge = $(`#avg-${studentId}`);
+                            avgBadge.text(response.average_grade !== null ?
+                                         response.average_grade.toFixed(2) : '-');
+
+                            // Обновляем цвет баджа
+                            avgBadge.removeClass('bg-success bg-primary bg-warning bg-danger bg-secondary');
+
+                            if (response.average_grade >= 4.5) {
+                                avgBadge.addClass('bg-success');
+                            } else if (response.average_grade >= 3.5) {
+                                avgBadge.addClass('bg-primary');
+                            } else if (response.average_grade >= 2.5) {
+                                avgBadge.addClass('bg-warning');
+                            } else if (response.average_grade > 0) {
+                                avgBadge.addClass('bg-danger');
+                            } else {
+                                avgBadge.addClass('bg-secondary');
+                            }
+                        }
+
+                        bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+                        showToast('Оценка удалена', 'success');
+                    } else {
+                        showToast('Ошибка при удалении: ' + response.error, 'error');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('AJAX ошибка при удалении:', status, error);
+                    showToast('Ошибка соединения с сервером: ' + error, 'error');
+                }
+            });
+        }
+    });
+
+    // Функция обновления отображения ячейки
+    function updateCellDisplay(cell, data) {
+        const markDisplay = cell.find('.mark-display');
+        const attendanceDisplay = cell.find('.attendance-display');
+
+        console.log('Обновление ячейки с данными:', data);
+
+        // Обновляем оценку
+        if (data.mark) {
+            if (data.mark.deleted) {
+                // Оценка удалена
+                markDisplay.html('<span class="text-muted grade-placeholder">-</span>');
+            } else if (data.mark.value) {
+                // Есть оценка
+                const color = getMarkColor(data.mark.value);
+                const tooltip = data.mark.type ? `${data.mark.type}` : '';
+                markDisplay.html(`
+                    <span class="badge ${color}"
+                          data-bs-toggle="tooltip"
+                          title="${tooltip}">
+                        ${data.mark.value}
+                    </span>
+                `);
+            }
+        }
+
+        // Обновляем посещаемость
+        if (data.attendance) {
+            if (data.attendance.deleted) {
+                // Посещаемость удалена (присутствовал)
+                attendanceDisplay.html('');
+            } else if (data.attendance.status && data.attendance.status !== 'PRESENT') {
+                // Есть отметка о непосещении
+                const color = getAttendanceColor(data.attendance.status);
+                const displayText = data.attendance.display ||
+                                   (data.attendance.status.charAt(0) + data.attendance.status.slice(1).toLowerCase());
+                attendanceDisplay.html(`
+                    <span class="badge ${color}"
+                          data-bs-toggle="tooltip"
+                          title="${displayText}">
+                        ${displayText.charAt(0)}
+                    </span>
+                `);
+            }
+        }
+
+        // Инициализируем тултипы заново
+        const tooltipTriggerList = [].slice.call(cell.find('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+            new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    }
+
+    // Вспомогательные функции
+    function getMarkColor(grade) {
+        switch(parseInt(grade)) {
+            case 5: return 'bg-success';
+            case 4: return 'bg-primary';
+            case 3: return 'bg-warning';
+            default: return 'bg-danger';
+        }
+    }
+
+    function getAttendanceColor(status) {
+        switch(status) {
+            case 'ABSENT': return 'bg-danger';
+            case 'ILL': return 'bg-info';
+            case 'LATE': return 'bg-warning';
+            default: return 'bg-secondary';
+        }
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    function showToast(message, type = 'info') {
+        const alertClass = type === 'success' ? 'alert-success' :
+                          type === 'error' ? 'alert-danger' : 'alert-info';
+
+        const toast = $(`
+            <div class="alert ${alertClass} alert-dismissible fade show position-fixed"
+                 style="top: 20px; right: 20px; z-index: 9999;">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        `);
+
+        $('body').append(toast);
+
+        setTimeout(function() {
+            toast.alert('close');
+        }, 3000);
+    }
+});
+</script>
+{% endblock %}

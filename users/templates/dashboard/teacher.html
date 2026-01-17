@@ -1,84 +1,88 @@
-{% extends 'base.html' %}
+{% extends 'layouts/base.html' %}
+{% load bootstrap_icons %}
 
 {% block title %}Панель учителя{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">
-        <i class="bi bi-speedometer2"></i> Панель учителя
-    </h1>
-    <div class="btn-toolbar mb-2 mb-md-0">
-        <div class="btn-group me-2">
-            <button type="button" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-calendar-week"></i> Расписание
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-journal-text"></i> Журнал
-            </button>
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">
+            <i class="bi bi-speedometer2"></i> Панель учителя
+        </h1>
+        <div class="btn-toolbar mb-2 mb-md-0">
+            <div class="btn-group me-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-calendar-week"></i> Расписание
+                </button>
+{#                <button type="button" class="btn btn-sm btn-outline-secondary">#}
+{#                    <i class="bi bi-journal-text"></i> Журнал#}
+{#                </button>#}
+                <a href="{% url 'journal:teacher_journal' %}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-journal-text"></i> Журнал
+                </a>
+            </div>
         </div>
     </div>
-</div>
 
-<!-- Статистика -->
-<div class="row mb-4">
-    <div class="col-md-3">
-        <div class="stat-card bg-primary text-white">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h6 class="mb-0">Занятий сегодня</h6>
-                    <h2 class="mb-0">{{ stats.today_lessons_count }}</h2>
+    <!-- Статистика -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-card bg-primary text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0">Занятий сегодня</h6>
+                        <h2 class="mb-0">{{ stats.today_lessons_count }}</h2>
+                    </div>
+                    <i class="bi bi-calendar-check" style="font-size: 2rem;"></i>
                 </div>
-                <i class="bi bi-calendar-check" style="font-size: 2rem;"></i>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card bg-success text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0">Мои классы</h6>
+                        <h2 class="mb-0">{{ stats.total_classes }}</h2>
+                    </div>
+                    <i class="bi bi-people" style="font-size: 2rem;"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card bg-info text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0">Оценок за месяц</h6>
+                        <h2 class="mb-0">{{ stats.marks_this_month }}</h2>
+                    </div>
+                    <i class="bi bi-pencil-square" style="font-size: 2rem;"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card bg-warning text-dark">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0">ДЗ к проверке</h6>
+                        <h2 class="mb-0">{{ homework_to_check|length }}</h2>
+                    </div>
+                    <i class="bi bi-book" style="font-size: 2rem;"></i>
+                </div>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="stat-card bg-success text-white">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h6 class="mb-0">Мои классы</h6>
-                    <h2 class="mb-0">{{ stats.total_classes }}</h2>
-                </div>
-                <i class="bi bi-people" style="font-size: 2rem;"></i>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="stat-card bg-info text-white">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h6 class="mb-0">Оценок за месяц</h6>
-                    <h2 class="mb-0">{{ stats.marks_this_month }}</h2>
-                </div>
-                <i class="bi bi-pencil-square" style="font-size: 2rem;"></i>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="stat-card bg-warning text-dark">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h6 class="mb-0">ДЗ к проверке</h6>
-                    <h2 class="mb-0">{{ homework_to_check|length }}</h2>
-                </div>
-                <i class="bi bi-book" style="font-size: 2rem;"></i>
-            </div>
-        </div>
-    </div>
-</div>
 
-<div class="row">
-    <!-- Ближайшие уроки -->
-    <div class="col-md-8">
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-calendar-event"></i> Ближайшие уроки</h5>
-            </div>
-            <div class="card-body">
-                {% if upcoming_lessons %}
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead>
+    <div class="row">
+        <!-- Ближайшие уроки -->
+        <div class="col-md-8">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-calendar-event"></i> Ближайшие уроки</h5>
+                </div>
+                <div class="card-body">
+                    {% if upcoming_lessons %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
                                 <tr>
                                     <th>Дата</th>
                                     <th>Время</th>
@@ -87,97 +91,98 @@
                                     <th>Тема</th>
                                     <th>Кабинет</th>
                                 </tr>
-                            </thead>
-                            <tbody>
+                                </thead>
+                                <tbody>
                                 {% for lesson in upcoming_lessons %}
-                                <tr>
-                                    <td>{{ lesson.date|date:"d.m.Y" }}</td>
-                                    <td>{{ lesson.start_time|time:"H:i" }} - {{ lesson.end_time|time:"H:i" }}</td>
-                                    <td>{{ lesson.class_group }}</td>
-                                    <td>{{ lesson.subject.title }}</td>
-                                    <td>{{ lesson.topic|default:"-"|truncatechars:30 }}</td>
-                                    <td>{{ lesson.classroom }}</td>
-                                </tr>
+                                    <tr>
+                                        <td>{{ lesson.date|date:"d.m.Y" }}</td>
+                                        <td>{{ lesson.start_time|time:"H:i" }} - {{ lesson.end_time|time:"H:i" }}</td>
+                                        <td>{{ lesson.class_group }}</td>
+                                        <td>{{ lesson.subject.title }}</td>
+                                        <td>{{ lesson.topic|default:"-"|truncatechars:30 }}</td>
+                                        <td>{{ lesson.classroom }}</td>
+                                    </tr>
                                 {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% else %}
-                    <div class="text-center text-muted py-4">
-                        <i class="bi bi-calendar-x" style="font-size: 3rem;"></i>
-                        <p class="mt-2">Нет предстоящих уроков</p>
-                    </div>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    
-    <!-- Быстрые действия -->
-    <div class="col-md-4">
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-lightning"></i> Быстрые действия</h5>
-            </div>
-            <div class="card-body">
-                <div class="d-grid gap-2">
-                    <a href="#" class="btn btn-primary btn-lg">
-                        <i class="bi bi-pencil-square"></i> Выставить оценку
-                    </a>
-                    <a href="#" class="btn btn-success btn-lg">
-                        <i class="bi bi-clipboard-check"></i> Отметить посещаемость
-                    </a>
-                    <a href="#" class="btn btn-info btn-lg">
-                        <i class="bi bi-book"></i> Задать домашнее задание
-                    </a>
-                    <a href="#" class="btn btn-warning btn-lg">
-                        <i class="bi bi-calendar-plus"></i> Создать урок
-                    </a>
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center text-muted py-4">
+                            <i class="bi bi-calendar-x" style="font-size: 3rem;"></i>
+                            <p class="mt-2">Нет предстоящих уроков</p>
+                        </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
-        
-        <!-- Мои классы -->
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-people"></i> Мои классы</h5>
+
+        <!-- Быстрые действия -->
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-lightning"></i> Быстрые действия</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{% url 'journal:teacher_journal' %}" class="btn btn-primary btn-lg">
+                            <i class="bi bi-pencil-square"></i> Выставить оценку
+                        </a>
+                        <a href="{% url 'journal:teacher_journal' %}" class="btn btn-success btn-lg">
+                            <i class="bi bi-clipboard-check"></i> Отметить посещаемость
+                        </a>
+                        <a href="#" class="btn btn-info btn-lg">
+                            <i class="bi bi-book"></i> Задать домашнее задание
+                        </a>
+                        <a href="#" class="btn btn-warning btn-lg">
+                            <i class="bi bi-calendar-plus"></i> Создать урок
+                        </a>
+                    </div>
+                </div>
             </div>
-            <div class="card-body">
-                <div class="list-group">
-                    {% for class in classes %}
-                    <a href="#" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                        <div>
-                            <strong>{{ class.name }}</strong>
-                            <br>
-                            <small class="text-muted">{{ class.year_of_study }} год обучения</small>
-                        </div>
-                        <span class="badge bg-primary rounded-pill">
+
+            <!-- Мои классы -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-people"></i> Мои классы</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group">
+                        {% for class in classes %}
+                            <a href="#"
+                               class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>{{ class.name }}</strong>
+                                    <br>
+                                    <small class="text-muted">{{ class.year_of_study }} год обучения</small>
+                                </div>
+                                <span class="badge bg-primary rounded-pill">
                             {{ class.student_count }} уч.
                         </span>
-                    </a>
-                    {% empty %}
-                    <div class="text-center text-muted py-3">
-                        <i class="bi bi-people" style="font-size: 2rem;"></i>
-                        <p class="mt-2">Классы не назначены</p>
+                            </a>
+                        {% empty %}
+                            <div class="text-center text-muted py-3">
+                                <i class="bi bi-people" style="font-size: 2rem;"></i>
+                                <p class="mt-2">Классы не назначены</p>
+                            </div>
+                        {% endfor %}
                     </div>
-                    {% endfor %}
                 </div>
             </div>
         </div>
     </div>
-</div>
 
-<!-- Последние оценки -->
-<div class="row mt-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-journal-text"></i> Последние выставленные оценки</h5>
-            </div>
-            <div class="card-body">
-                {% if recent_marks %}
-                    <div class="table-responsive">
-                        <table class="table">
-                            <thead>
+    <!-- Последние оценки -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-journal-text"></i> Последние выставленные оценки</h5>
+                </div>
+                <div class="card-body">
+                    {% if recent_marks %}
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
                                 <tr>
                                     <th>Ученик</th>
                                     <th>Предмет</th>
@@ -186,37 +191,37 @@
                                     <th>Дата</th>
                                     <th>Комментарий</th>
                                 </tr>
-                            </thead>
-                            <tbody>
+                                </thead>
+                                <tbody>
                                 {% for mark in recent_marks %}
-                                <tr>
-                                    <td>{{ mark.student.user.get_full_name }}</td>
-                                    <td>{{ mark.lesson.subject.title }}</td>
-                                    <td>
+                                    <tr>
+                                        <td>{{ mark.student.user.get_full_name }}</td>
+                                        <td>{{ mark.lesson.subject.title }}</td>
+                                        <td>
                                         <span class="grade-badge grade-{{ mark.value }}">
                                             {{ mark.value }}
                                         </span>
-                                    </td>
-                                    <td>
+                                        </td>
+                                        <td>
                                         <span class="badge bg-secondary">
                                             {{ mark.get_mark_type_display }}
                                         </span>
-                                    </td>
-                                    <td>{{ mark.created_at|date:"d.m.Y H:i" }}</td>
-                                    <td>{{ mark.comment|default:"-"|truncatechars:30 }}</td>
-                                </tr>
+                                        </td>
+                                        <td>{{ mark.created_at|date:"d.m.Y H:i" }}</td>
+                                        <td>{{ mark.comment|default:"-"|truncatechars:30 }}</td>
+                                    </tr>
                                 {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% else %}
-                    <div class="text-center text-muted py-4">
-                        <i class="bi bi-journal-x" style="font-size: 3rem;"></i>
-                        <p class="mt-2">Еще нет выставленных оценок</p>
-                    </div>
-                {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center text-muted py-4">
+                            <i class="bi bi-journal-x" style="font-size: 3rem;"></i>
+                            <p class="mt-2">Еще нет выставленных оценок</p>
+                        </div>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
-</div>
 {% endblock %}

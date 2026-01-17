@@ -1,7 +1,11 @@
+# journal/models.py
+
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.db.models.aggregates import Avg
+
 from users.models import StudentProfile
-from school_structure.models import Lesson
+from school_structure.models import Lesson, AcademicYear, Subject, Quarter
 
 
 class Attendance(models.Model):
@@ -124,3 +128,143 @@ class Homework(models.Model):
 
     def __str__(self):
         return f'ДЗ для {self.lesson.class_group} до {self.deadline}'
+
+
+class QuarterlyGrade(models.Model):
+    """Четвертная оценка"""
+    student = models.ForeignKey(
+        StudentProfile,
+        on_delete=models.CASCADE,
+        related_name='quarterly_grades',
+        verbose_name='Ученик'
+    )
+    subject = models.ForeignKey(
+        Subject,
+        on_delete=models.CASCADE,
+        related_name='quarterly_grades',
+        verbose_name='Предмет'
+    )
+    quarter = models.ForeignKey(
+        Quarter,
+        on_delete=models.CASCADE,
+        related_name='quarterly_grades',
+        verbose_name='Четверть'
+    )
+    grade = models.PositiveIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        verbose_name='Оценка за четверть'
+    )
+    calculated_grade = models.FloatField(
+        verbose_name='Расчетный балл',
+        help_text='Средний балл по текущим оценкам'
+    )
+    is_finalized = models.BooleanField(
+        default=False,
+        verbose_name='Оценка утверждена'
+    )
+    finalized_by = models.ForeignKey(
+        'users.TeacherProfile',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name='Утвердил'
+    )
+    finalized_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата утверждения')
+    comment = models.TextField(blank=True, verbose_name='Комментарий')
+
+    class Meta:
+        verbose_name = 'Четвертная оценка'
+        verbose_name_plural = 'Четвертные оценки'
+        unique_together = ['student', 'subject', 'quarter']
+        indexes = [
+            models.Index(fields=['student', 'quarter']),
+            models.Index(fields=['subject', 'quarter']),
+        ]
+
+    def __str__(self):
+        return f'{self.student} - {self.subject} ({self.quarter}): {self.grade}'
+
+    def save(self, *args, **kwargs):
+        # Автоматически рассчитываем средний балл
+        if not self.calculated_grade:
+            marks = Mark.objects.filter(
+                student=self.student,
+                lesson__subject=self.subject,
+                lesson__quarter=self.quarter
+            )
+            avg = marks.aggregate(avg=Avg('value'))['avg']
+            self.calculated_grade = round(avg, 2) if avg else 0
+        super().save(*args, **kwargs)
+
+
+class YearlyGrade(models.Model):
+    """Годовая оценка"""
+    student = models.ForeignKey(
+        StudentProfile,
+        on_delete=models.CASCADE,
+        related_name='yearly_grades',
+        verbose_name='Ученик'
+    )
+    subject = models.ForeignKey(
+        Subject,
+        on_delete=models.CASCADE,
+        related_name='yearly_grades',
+        verbose_name='Предмет'
+    )
+    academic_year = models.ForeignKey(
+        AcademicYear,
+        on_delete=models.CASCADE,
+        related_name='yearly_grades',
+        verbose_name='Учебный год'
+    )
+    grade = models.PositiveIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        verbose_name='Годовая оценка'
+    )
+    calculation_method = models.CharField(
+        max_length=20,
+        choices=[
+            ('AVERAGE', 'Среднее арифметическое'),
+            ('WEIGHTED', 'Взвешенное среднее'),
+            ('MANUAL', 'Ручной ввод'),
+        ],
+        default='AVERAGE',
+        verbose_name='Метод расчета'
+    )
+    quarterly_grades = models.ManyToManyField(
+        QuarterlyGrade,
+        blank=True,
+        verbose_name='Четвертные оценки',
+        help_text='Оценки за четверти, использованные для расчета'
+    )
+    is_finalized = models.BooleanField(default=False, verbose_name='Оценка утверждена')
+    finalized_by = models.ForeignKey(
+        'users.TeacherProfile',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name='Утвердил'
+    )
+    finalized_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата утверждения')
+    comment = models.TextField(blank=True, verbose_name='Комментарий')
+
+    class Meta:
+        verbose_name = 'Годовая оценка'
+        verbose_name_plural = 'Годовые оценки'
+        unique_together = ['student', 'subject', 'academic_year']
+        indexes = [
+            models.Index(fields=['student', 'academic_year']),
+            models.Index(fields=['subject', 'academic_year']),
+        ]
+
+    def __str__(self):
+        return f'{self.student} - {self.subject} ({self.academic_year}): {self.grade}'
+
+    def calculate_from_quarters(self):
+        """Рассчитывает годовую оценку на основе четвертных"""
+        quarters = self.quarterly_grades.all()
+        if quarters.exists():
+            avg = quarters.aggregate(avg=Avg('grade'))['avg'] - 0.1
+            # Округляем по правилам (2.6 -> 3, 2.5 -> 2)
+            return round(avg)
+        return None

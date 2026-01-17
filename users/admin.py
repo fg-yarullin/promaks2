@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils import timezone
 from django.contrib.auth.admin import UserAdmin
 from .models import CustomUser, StudentProfile, TeacherProfile, ParentProfile
 
@@ -17,9 +18,26 @@ class CustomUserAdmin(UserAdmin):
 
 @admin.register(StudentProfile)
 class StudentProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'class_group', 'admission_year')
-    list_filter = ('class_group',)
+    list_display = ('user', 'class_group', 'admission_year', 'get_current_class')
+    list_filter = ('class_group', 'admission_year')
     search_fields = ('user__first_name', 'user__last_name', 'class_group__name')
+    raw_id_fields = ('user', 'class_group')
+
+    def get_current_class(self, obj):
+        """Показывает текущий класс ученика на основе года поступления"""
+        if obj.class_group and obj.admission_year:
+            current_year = timezone.now().year
+            # Простой расчет: текущий год - год поступления + 1
+            year_of_study = current_year - obj.admission_year + 1
+            if 1 <= year_of_study <= 11:
+                return f"{year_of_study}-й класс"
+        return "-"
+
+    get_current_class.short_description = 'Текущий класс'
+# class StudentProfileAdmin(admin.ModelAdmin):
+#     list_display = ('user', 'class_group', 'admission_year')
+#     list_filter = ('class_group',)
+#     search_fields = ('user__first_name', 'user__last_name', 'class_group__name')
 
 
 @admin.register(TeacherProfile)

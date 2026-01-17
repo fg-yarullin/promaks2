@@ -1,6 +1,17 @@
+# users/models.py
 from django.db import models
 from django.contrib.auth.models import AbstractUser
-from django.core.validators import MinLengthValidator
+from django.utils import timezone
+
+
+def get_current_admission_year():
+    """Функция для определения текущего учебного года"""
+    today = timezone.now().date()
+    # Если сентябрь или позже - текущий год, иначе предыдущий
+    if today.month >= 9:  # Учебный год начинается в сентябре
+        return today.year
+    else:
+        return today.year - 1
 
 
 class CustomUser(AbstractUser):
@@ -42,17 +53,32 @@ class StudentProfile(models.Model):
         'school_structure.ClassGroup',
         on_delete=models.SET_NULL,
         null=True,
+        blank=True,
         related_name='students',
         verbose_name='Класс'
     )
-    admission_year = models.PositiveIntegerField(verbose_name='Год поступления')
 
-    class Meta:
-        verbose_name = 'Профиль ученика'
-        verbose_name_plural = 'Профили учеников'
+    admission_year = models.PositiveIntegerField(
+        verbose_name='Год поступления',
+        default=get_current_admission_year
+    )
 
-    def __str__(self):
-        return f'{self.user.get_full_name()} - {self.class_group}'
+
+class Meta:
+    verbose_name = 'Профиль ученика'
+    verbose_name_plural = 'Профили учеников'
+
+
+def __str__(self):
+    class_name = self.class_group.name if self.class_group else "Нет класса"
+    return f'{self.user.get_full_name()} - {class_name}'
+
+
+def save(self, *args, **kwargs):
+    """При сохранении убеждаемся, что admission_year установлен"""
+    if not self.admission_year:
+        self.admission_year = get_current_admission_year()
+    super().save(*args, **kwargs)
 
 
 class TeacherProfile(models.Model):

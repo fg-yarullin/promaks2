@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     # 'rest_framework',
     'django_filters',
     'django_bootstrap5',
+    'django_bootstrap_icons',
     'users.apps.UsersConfig',
     'school_structure.apps.SchoolStructureConfig',
     'journal.apps.JournalConfig',
@@ -67,6 +68,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'journal.context_processors.current_date',
             ],
         },
     },
@@ -107,7 +109,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'ru-ru'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Europe/Moscow'
 
 USE_I18N = True
 
@@ -151,8 +153,7 @@ SIMPLE_JWT = {
 }
 
 AUTHENTICATION_BACKENDS = [
-    'django.contrib.auth.backends.ModelBackend',
-    'users.authentication.EmailAuthBackend',
+    'users.authentication.EmailOrUsernameBackend',
 ]
 
 # Redirect to home URL after login (Default redirects to /accounts/profile/)

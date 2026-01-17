@@ -1,13 +1,14 @@
+{% load bootstrap_icons %}
 <nav class="nav flex-column">
     {% if user.role == 'TEACHER' %}
         <a class="nav-link {% if request.resolver_match.url_name == 'teacher_dashboard' %}active{% endif %}"
-           href="{% url 'teacher_dashboard' %}">
+           href="{% url 'users:teacher_dashboard' %}">
             <i class="bi bi-speedometer2"></i> Панель учителя
         </a>
         <a class="nav-link" href="#">
-            <i class="bi bi-calendar-week"></i> Расписание
+            <i class="calendar"></i> Расписание {% bs_icon 'calendar' %} {% bs_icon 'alarm' %}
         </a>
-        <a class="nav-link" href="#">
+        <a class="nav-link" href="{% url 'journal:teacher_journal' %}">
             <i class="bi bi-journal-text"></i> Журнал
         </a>
         <a class="nav-link" href="#">
@@ -17,10 +18,10 @@
         <h6 class="sidebar-heading px-3 mt-3 mb-1 text-muted">
             <span>Оценки и посещаемость</span>
         </h6>
-        <a class="nav-link" href="#">
+        <a class="nav-link" href="{% url 'journal:teacher_journal' %}">
             <i class="bi bi-pencil-square"></i> Выставить оценку
         </a>
-        <a class="nav-link" href="#">
+        <a class="nav-link" href="{% url 'journal:teacher_journal' %}">
             <i class="bi bi-clipboard-check"></i> Отметить посещаемость
         </a>
         <a class="nav-link" href="#">
@@ -29,7 +30,7 @@
 
     {% elif user.role == 'STUDENT' %}
         <a class="nav-link {% if request.resolver_match.url_name == 'student_dashboard' %}active{% endif %}"
-           href="{% url 'student_dashboard' %}">
+           href="{% url 'users:student_dashboard' %}">
             <i class="bi bi-speedometer2"></i> Панель ученика
         </a>
         <a class="nav-link" href="#">
@@ -66,23 +67,23 @@
 
     {% elif user.role == 'ADMIN' %}
         <a class="nav-link {% if request.resolver_match.url_name == 'admin_dashboard' %}active{% endif %}"
-           href="{-% url 'admin_dashboard' %}">
+           href="{% url 'users:admin_dashboard' %}">
             <i class="bi bi-speedometer2"></i> Панель администратора
         </a>
         <div class="dropdown-divider"></div>
-        <h6 class="sidebar-heading px-3 mt-3 mb-1 text-muted">
+        <h6 class="sidebar-heading px-3 mt-3 mb-1 text-primary">
             <span>Управление</span>
         </h6>
-        <a class="nav-link" href="/admin/" target="_blank">
+        <a class="nav-link" href="{% url 'admin:index' %}" target="_blank">
             <i class="bi bi-gear"></i> Админ-панель Django
         </a>
-        <a class="nav-link" href="#">
+        <a class="nav-link" href="/admin/users/customuser/">
             <i class="bi bi-people"></i> Пользователи
         </a>
-        <a class="nav-link" href="#">
+        <a class="nav-link" href="/admin/school_structure/classgroup/">
             <i class="bi bi-building"></i> Структура школы
         </a>
-        <a class="nav-link" href="#">
+        <a class="nav-link" href="/admin/school_structure/academicyear/">
             <i class="bi bi-clock-history"></i> Учебные периоды
         </a>
     {% endif %}
@@ -95,4 +96,9 @@
     <a class="nav-link" href="#">
         <i class="bi bi-question-circle"></i> Помощь
     </a>
+    {% if user.is_authenticated %}
+        <a class="nav-link" href="{% url 'users:logout' %}">
+            <i class="bi bi-box-arrow-right"></i> Выйти
+        </a>
+    {% endif %}
 </nav>

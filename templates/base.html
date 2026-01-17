@@ -1,11 +1,17 @@
-<!doctype html>
 {% load static %}
-{% load django_bootstrap5 %}
+<!doctype html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Электронный журнал{% endblock %}</title>
+    <script type="text/javascript" src="{% static 'js/jquery-3.7.1.min.js' %}"></script>
+
+    {% load django_bootstrap5 %}
+    {% load bootstrap_icons %}
+    {% bootstrap_css %}
+{#    {% bootstrap_javascript %}#}
+
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -58,7 +64,7 @@
 </nav>
 
 <div class="container-fluid">
-{% block content %}{% endblock %}
+    {% block content %}{% endblock %}
     {% if user.is_authenticated and user.role != 'EMPTY' %}
         <!-- Боковая панель для авторизованных пользователей -->
         <div class="sidebar d-none d-lg-block" style="width: 220px;">

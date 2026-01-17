@@ -12,7 +12,7 @@ urlpatterns = [
     # path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 
     # path('school/', include('school_structure.urls')),
-    # path('journal/', include('journal.urls')),
+    path('journal/', include('journal.urls')),
 ]
 
 if settings.DEBUG:

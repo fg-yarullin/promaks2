@@ -1,5 +1,7 @@
+# forms.py
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
+from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from school_structure.models import ClassGroup
@@ -7,11 +9,11 @@ from school_structure.models import ClassGroup
 User = get_user_model()
 
 
-class EmailAuthenticationForm(AuthenticationForm):
-    """Форма входа по email вместо username"""
-    username = forms.EmailField(
-        label='Email',
-        widget=forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'Введите email'})
+class EmailOrUsernameAuthenticationForm(AuthenticationForm):
+    """Форма входа по email ИЛИ username"""
+    username = forms.CharField(
+        label='Email или Логин',
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Введите email или логин'})
     )
     password = forms.CharField(
         label='Пароль',
@@ -19,21 +21,20 @@ class EmailAuthenticationForm(AuthenticationForm):
     )
 
     def clean(self):
-        email = self.cleaned_data.get('username')
+        username = self.cleaned_data.get('username')
         password = self.cleaned_data.get('password')
 
-        if email and password:
-            # Используем наш кастомный бэкенд
-            from .authentication import EmailAuthBackend
-            backend = EmailAuthBackend()
-            user = backend.authenticate(request=self.request, username=email, password=password)
+        if username and password:
+            # Пробуем аутентифицировать через все бэкенды
+            user = authenticate(request=self.request, username=username, password=password)
 
             if user is None:
-                raise forms.ValidationError('Неверный email или пароль')
+                raise forms.ValidationError('Неверный email/логин или пароль')
             elif not user.is_active:
                 raise forms.ValidationError('Аккаунт отключен')
 
             self.user_cache = user
+
         return self.cleaned_data
 
 
