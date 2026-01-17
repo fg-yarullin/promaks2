@@ -13,7 +13,7 @@ import calendar
 from .forms import EmailOrUsernameAuthenticationForm, UserRegistrationForm, StudentProfileForm, TeacherProfileForm
 from .models import CustomUser, StudentProfile, TeacherProfile, ParentProfile
 from school_structure.models import Lesson, ClassGroup, Subject, Quarter, AcademicYear
-from journal.models import Mark, Attendance, Homework
+# from journal.models import Mark, Attendance, Homework
 
 from .decorators import (
     role_required, teacher_required, student_required,
