@@ -1,6 +1,6 @@
 {% extends 'layouts/base.html' %}
-{% load journal_tags %}
 {% load static %}
+{% load journal_tags %}
 
 {% block content %}
 <div class="container-fluid">
@@ -18,11 +18,12 @@
         </div>
         <div class="col-auto">
             <div class="btn-group">
-                <button class="btn btn-outline-primary" id="manageColumnsBtn">
-                    <i class="bi bi-columns-gap"></i> Управление столбцами
-                </button>
-                <a href="{% url 'journal:yearly_grades' class_group.id subject.id %}"
+                <a href="{% url 'journal:quarterly_grades' class_group.id subject.id quarter.id %}"
                    class="btn btn-warning">
+                    <i class="bi bi-calendar-week"></i> Четвертные оценки
+                </a>
+                <a href="{% url 'journal:yearly_grades' class_group.id subject.id %}"
+                   class="btn btn-success">
                     <i class="bi bi-calendar"></i> Годовые оценки
                 </a>
             </div>
@@ -42,12 +43,31 @@
                     </th>
 
                     {% for lesson_data in lessons_with_columns %}
-                        <th colspan="{{ lesson_data.columns|length }}" class="text-center"
-                            style="background-color: #f8f9fa;">
-                            {{ lesson_data.lesson.date|date:"d.m" }}
-                            <br>
-                            <small class="text-muted">ур. {{ lesson_data.lesson.lesson_number }}</small>
-                        </th>
+                        {% if lesson_data.columns %}
+                            <th colspan="{{ lesson_data.columns|length }}" class="text-center lesson-header"
+                                data-lesson-id="{{ lesson_data.lesson.id }}"
+                                style="background-color: #f8f9fa; cursor: pointer;">
+                                {{ lesson_data.lesson.date|date:"d.m" }}
+                                <br>
+                                <small class="text-muted">ур. {{ lesson_data.lesson.lesson_number }}</small>
+                                <br>
+                                <small class="text-primary">
+                                    <i class="bi bi-plus-circle"></i> Добавить столбец
+                                </small>
+                            </th>
+                        {% else %}
+                            <th class="text-center lesson-header"
+                                data-lesson-id="{{ lesson_data.lesson.id }}"
+                                style="background-color: #f8f9fa; cursor: pointer;">
+                                {{ lesson_data.lesson.date|date:"d.m" }}
+                                <br>
+                                <small class="text-muted">ур. {{ lesson_data.lesson.lesson_number }}</small>
+                                <br>
+                                <small class="text-primary">
+                                    <i class="bi bi-plus-circle"></i> Добавить столбец
+                                </small>
+                            </th>
+                        {% endif %}
                     {% endfor %}
 
                     <th rowspan="2" style="min-width: 100px; background-color: #fff3cd;">
@@ -57,88 +77,103 @@
                 <tr>
                     {% for lesson_data in lessons_with_columns %}
                         {% for column in lesson_data.columns %}
-                            <th style="min-width: 80px; text-align: center; font-size: 0.9em;">
-                                {{ column.grade_column.short_title }}
-                                <br>
-                                <small class="text-muted" title="{{ column.grade_column.title }}">
-                                    в.{{ column.grade_column.weight }}
-                                </small>
+                            <th class="column-header text-center"
+                                data-column-id="{{ column.id }}"
+                                style="min-width: 100px; cursor: pointer;"
+                                title="Тип: {{ column.grade_type.title }} (вес: {{ column.grade_type.weight }})">
+                                <div class="d-flex flex-column align-items-center">
+                                    <span class="badge mb-1" style="background-color: {{ column.grade_type.color }};">
+                                        {{ column.grade_type.short_title }}
+                                    </span>
+                                    <small class="text-muted">{{ column.title|truncatechars:15 }}</small>
+                                    <small class="text-muted">в.{{ column.grade_type.weight }}</small>
+                                </div>
                             </th>
                         {% endfor %}
                     {% endfor %}
                 </tr>
             </thead>
             <tbody>
-                {% for stats in student_stats %}
-                <tr data-student-id="{{ stats.student.id }}">
-                    <td style="position: sticky; left: 0; background: white;">
-                        <strong>{{ stats.student.user.last_name }} {{ stats.student.user.first_name }}</strong>
-                    </td>
-                    <td style="position: sticky; left: 200px; background: white; text-align: center;">
-                        <span class="badge
-                            {% if stats.avg_grade >= 4.5 %}bg-success
-                            {% elif stats.avg_grade >= 3.5 %}bg-primary
-                            {% elif stats.avg_grade >= 2.5 %}bg-warning
-                            {% elif stats.avg_grade %}bg-danger
-                            {% else %}bg-secondary{% endif %}">
-                            {{ stats.avg_grade|default:"-"|floatformat:2 }}
-                        </span>
-                    </td>
 
-                    {% for lesson_data in lessons_with_columns %}
-                        {% for column in lesson_data.columns %}
-                            <td class="grade-cell text-center"
-                                data-student-id="{{ stats.student.id }}"
-                                data-lesson-column-id="{{ column.id }}"
-                                style="cursor: pointer;"
-                                title="{{ column.grade_column.title }} (вес: {{ column.grade_column.weight }})">
+            {% for stats in student_stats %}
+<tr data-student-id="{{ stats.student.id }}">
+    <td style="position: sticky; left: 0; background: white;">
+        <strong>{{ stats.student.user.last_name }} {{ stats.student.user.first_name }}</strong>
+    </td>
+    <td style="position: sticky; left: 200px; background: white; text-align: center;">
+        <span class="badge
+            {% if stats.avg_grade >= 4.5 %}bg-success
+            {% elif stats.avg_grade >= 3.5 %}bg-primary
+            {% elif stats.avg_grade >= 2.5 %}bg-warning
+            {% elif stats.avg_grade %}bg-danger
+            {% else %}bg-secondary{% endif %}"
+              id="avg-{{ stats.student.id }}">
+            {{ stats.avg_grade|default:"-"|floatformat:2 }}
+        </span>
+    </td>
 
-                                {% with mark=marks_dict|get_item:stats.student.id|get_item:column.id %}
-                                    {% if mark %}
-                                        <span class="badge
-                                            {% if mark.value == 5 %}bg-success
-                                            {% elif mark.value == 4 %}bg-primary
-                                            {% elif mark.value == 3 %}bg-warning
-                                            {% else %}bg-danger{% endif %}"
-                                              data-mark-id="{{ mark.id }}">
-                                            {{ mark.value }}
-                                        </span>
-                                    {% else %}
-                                        <span class="text-muted">-</span>
-                                    {% endif %}
-                                {% endwith %}
-                            </td>
-                        {% endfor %}
-                    {% endfor %}
+    {% for lesson_data in lessons_with_columns %}
+        {% for column in lesson_data.columns %}
+            {% get_student_grade grades_dict stats.student.id column.id as grade_value %}
+            {% get_grade_data grades_dict stats.student.id column.id as grade_data %}
 
-                    <td style="background-color: #fff3cd; text-align: center;">
-                        {% if stats.quarterly_grade and stats.quarterly_grade.grade %}
-                            <span class="badge
-                                {% if stats.quarterly_grade.grade == 5 %}bg-success
-                                {% elif stats.quarterly_grade.grade == 4 %}bg-primary
-                                {% elif stats.quarterly_grade.grade == 3 %}bg-warning
-                                {% else %}bg-danger{% endif %}">
-                                {{ stats.quarterly_grade.grade }}
-                            </span>
-                            {% if stats.quarterly_grade.calculated_grade %}
-                                <br>
-                                <small class="text-muted">
-                                    ({{ stats.quarterly_grade.calculated_grade|floatformat:2 }})
-                                </small>
-                            {% endif %}
-                        {% else %}
-                            <span class="text-muted">-</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
+            <td class="grade-cell text-center"
+                data-student-id="{{ stats.student.id }}"
+                data-column-id="{{ column.id }}"
+                style="cursor: pointer;"
+                title="{{ column.grade_type.title }} (вес: {{ column.grade_type.weight }})">
+
+                {% if grade_value %}
+                    <span class="badge
+                        {% if grade_value == 5 %}bg-success
+                        {% elif grade_value == 4 %}bg-primary
+                        {% elif grade_value == 3 %}bg-warning
+                        {% else %}bg-danger{% endif %}"
+                          data-grade-id="{{ grade_data.id|default:'' }}">
+                        {{ grade_value }}
+                    </span>
+                {% else %}
+                    <span class="text-muted">-</span>
+                {% endif %}
+            </td>
+        {% endfor %}
+    {% endfor %}
+
+    <td style="background-color: #fff3cd; text-align: center;">
+        {% if stats.quarterly_grade and stats.quarterly_grade.grade %}
+            <span class="badge
+                {% if stats.quarterly_grade.grade == 5 %}bg-success
+                {% elif stats.quarterly_grade.grade == 4 %}bg-primary
+                {% elif stats.quarterly_grade.grade == 3 %}bg-warning
+                {% else %}bg-danger{% endif %}">
+                {{ stats.quarterly_grade.grade }}
+            </span>
+            {% if stats.quarterly_grade.calculated_grade %}
+                <br>
+                <small class="text-muted">
+                    ({{ stats.quarterly_grade.calculated_grade|floatformat:2 }})
+                </small>
+            {% endif %}
+        {% else %}
+            <span class="text-muted">-</span>
+        {% endif %}
+    </td>
+</tr>
+{% empty %}
+<tr>
+    <td colspan="{{ total_columns|add:3 }}" class="text-center text-muted py-4">
+        <i class="bi bi-people" style="font-size: 2rem;"></i>
+        <p class="mt-2">В классе нет учеников</p>
+    </td>
+</tr>
+{% endfor %}
             </tbody>
         </table>
     </div>
 </div>
 
 <!-- Модальное окно редактирования оценки -->
-<div class="modal fade" id="editMarkModal">
+<div class="modal fade" id="editGradeModal">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
@@ -146,13 +181,13 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <form id="editMarkForm">
+                <form id="editGradeForm">
                     <input type="hidden" id="editStudentId">
-                    <input type="hidden" id="editLessonColumnId">
+                    <input type="hidden" id="editColumnId">
 
                     <div class="mb-3">
-                        <label class="form-label">Оценка</label>
-                        <select class="form-select" id="editMarkValue" required>
+                        <label class="form-label" for="editGradeValue">Оценка</label>
+                        <select class="form-select" id="editGradeValue" required>
                             <option value="">- Выберите оценку -</option>
                             <option value="5">5 (Отлично)</option>
                             <option value="4">4 (Хорошо)</option>
@@ -163,112 +198,230 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label">Комментарий</label>
-                        <textarea class="form-control" id="editMarkComment" rows="2"></textarea>
+                        <label class="form-label" for="editGradeComment">Комментарий</label>
+                        <textarea class="form-control" id="editGradeComment" rows="2"></textarea>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                <button type="button" class="btn btn-danger" id="deleteMarkBtn">Удалить</button>
-                <button type="button" class="btn btn-primary" id="saveMarkBtn">Сохранить</button>
+                <button type="button" class="btn btn-danger" id="deleteGradeBtn">Удалить</button>
+                <button type="button" class="btn btn-primary" id="saveGradeBtn">Сохранить</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Модальное окно управления столбцами -->
-<div class="modal fade" id="manageColumnsModal">
-    <div class="modal-dialog modal-lg">
+<!-- Модальное окно управления столбцом -->
+<div class="modal fade" id="manageColumnModal">
+    <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Управление столбцами оценок</h5>
+                <h5 class="modal-title">Управление столбцом</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h6>Доступные типы оценок</h6>
-                        <div id="availableColumns" class="list-group">
-                            {% for column in default_columns %}
-                                <div class="list-group-item d-flex justify-content-between align-items-center"
-                                     data-column-id="{{ column.id }}">
-                                    {{ column.title }}
-                                    <small class="text-muted">вес: {{ column.weight }}</small>
-                                    <button class="btn btn-sm btn-outline-primary add-column-btn"
-                                            data-column-id="{{ column.id }}">
-                                        <i class="bi bi-plus"></i>
-                                    </button>
-                                </div>
+                <form id="manageColumnForm">
+                    <input type="hidden" id="manageLessonId">
+                    <input type="hidden" id="manageColumnId">
+
+                    <div class="mb-3">
+                        <label class="form-label" for="manageGradeTypeId">Тип оценки</label>
+                        <select class="form-select" id="manageGradeTypeId" required>
+                            <option value="">- Выберите тип оценки -</option>
+                            {% for grade_type in grade_types %}
+                            <option value="{{ grade_type.id }}"
+                                    data-color="{{ grade_type.color }}"
+                                    data-weight="{{ grade_type.weight }}">
+                                {{ grade_type.title }} (вес: {{ grade_type.weight }})
+                            </option>
                             {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="manageColumnTitle">Название столбца (опционально)</label>
+                        <input type="text" class="form-control" id="manageColumnTitle">
+                        <small class="text-muted">Оставьте пустым для использования названия типа оценки</small>
+                    </div>
+
+                    <div id="columnPreview" class="card mb-3" style="display: none;">
+                        <div class="card-body text-center">
+                            <span class="badge mb-2" id="previewBadge">УО</span>
+                            <h6 id="previewTitle">Устный ответ</h6>
+                            <small class="text-muted">Вес: <span id="previewWeight">1.0</span></small>
                         </div>
                     </div>
-                    <div class="col-md-6">
-                        <h6>Столбцы урока</h6>
-                        <div id="lessonColumns" class="list-group sortable">
-                            {% for lesson_data in lessons_with_columns %}
-                                {% for column in lesson_data.columns %}
-                                    <div class="list-group-item d-flex justify-content-between align-items-center"
-                                         data-lesson-column-id="{{ column.id }}">
-                                        {{ column.grade_column.title }}
-                                        <small class="text-muted">вес: {{ column.grade_column.weight }}</small>
-                                        <button class="btn btn-sm btn-outline-danger remove-column-btn"
-                                                data-lesson-column-id="{{ column.id }}">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </div>
-                                {% endfor %}
-                            {% endfor %}
-                        </div>
-                    </div>
-                </div>
+                </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-danger" id="deleteColumnBtn">Удалить столбец</button>
+                <button type="button" class="btn btn-primary" id="saveColumnBtn">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно добавления столбца -->
+<div class="modal fade" id="addColumnModal">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить столбец оценки</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addColumnForm">
+                    <input type="hidden" id="addLessonId">
+
+                    <div class="mb-3">
+                        <label class="form-label" for="addGradeTypeId">Тип оценки</label>
+                        <select class="form-select" id="addGradeTypeId" required>
+                            <option value="">- Выберите тип оценки -</option>
+                            {% for grade_type in grade_types %}
+                            <option value="{{ grade_type.id }}"
+                                    data-color="{{ grade_type.color }}"
+                                    data-weight="{{ grade_type.weight }}">
+                                {{ grade_type.title }} (вес: {{ grade_type.weight }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="addColumnTitle">Название столбца (опционально)</label>
+                        <input type="text" class="form-control" id="addColumnTitle">
+                        <small class="text-muted">Оставьте пустым для использования названия типа оценки</small>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="saveAddColumnBtn">Добавить</button>
             </div>
         </div>
     </div>
 </div>
 {% endblock %}
 
+{% block extra_css %}
+<style>
+.lesson-header:hover {
+    background-color: #e9ecef !important;
+}
+
+.column-header:hover {
+    background-color: #e9ecef !important;
+}
+
+.grade-cell:hover {
+    background-color: rgba(0, 123, 255, 0.1) !important;
+}
+
+#journalTable th {
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+#journalTable td {
+    vertical-align: middle;
+}
+</style>
+{% endblock %}
+
 {% block extra_js %}
 <script>
 $(document).ready(function() {
-    // Редактирование оценки
+    let currentContext = 'column'; // 'column' или 'lesson'
+    let currentLessonId = null;
+    let currentColumnId = null;
+
+    // Клик по заголовку урока (добавление столбца)
+    $('.lesson-header').click(function() {
+        currentContext = 'lesson';
+        currentLessonId = $(this).data('lesson-id');
+
+        $('#addLessonId').val(currentLessonId);
+        $('#addGradeTypeId').val('');
+        $('#addColumnTitle').val('');
+
+        const modal = new bootstrap.Modal(document.getElementById('addColumnModal'));
+        modal.show();
+    });
+
+    // Клик по заголовку столбца (управление столбцом)
+    $('.column-header').click(function(e) {
+        e.stopPropagation();
+        currentContext = 'column';
+        currentColumnId = $(this).data('column-id');
+
+        // Получаем информацию о столбце
+        $.ajax({
+            url: '{% url "journal:get_column_stats" 0 %}'.replace('/0/', `/${currentColumnId}/`),
+            method: 'GET',
+            success: function(response) {
+                if (response.column_info) {
+                    const column = response.column_info;
+
+                    $('#manageLessonId').val(column.id);
+                    $('#manageColumnId').val(column.id);
+                    $('#manageGradeTypeId').val('');
+                    $('#manageColumnTitle').val(column.title);
+
+                    // Устанавливаем тип оценки
+                    for (let option of $('#manageGradeTypeId option')) {
+                        if ($(option).text().includes(column.grade_type.title)) {
+                            $(option).prop('selected', true);
+                            break;
+                        }
+                    }
+
+                    // Обновляем превью
+                    updateColumnPreview();
+
+                    const modal = new bootstrap.Modal(document.getElementById('manageColumnModal'));
+                    modal.show();
+                }
+            }
+        });
+    });
+
+    // Клик по ячейке с оценкой
     $('.grade-cell').click(function() {
         const studentId = $(this).data('student-id');
-        const lessonColumnId = $(this).data('lesson-column-id');
-        const currentMark = $(this).find('.badge');
+        const columnId = $(this).data('column-id');
+        const currentGrade = $(this).find('.badge');
 
         $('#editStudentId').val(studentId);
-        $('#editLessonColumnId').val(lessonColumnId);
+        $('#editColumnId').val(columnId);
 
-        if (currentMark.length) {
-            $('#editMarkValue').val(currentMark.text().trim());
+        if (currentGrade.length) {
+            $('#editGradeValue').val(currentGrade.text().trim());
         } else {
-            $('#editMarkValue').val('');
+            $('#editGradeValue').val('');
         }
 
-        $('#editMarkComment').val('');
+        $('#editGradeComment').val('');
 
-        const modal = new bootstrap.Modal(document.getElementById('editMarkModal'));
+        const modal = new bootstrap.Modal(document.getElementById('editGradeModal'));
         modal.show();
     });
 
     // Сохранение оценки
-    $('#saveMarkBtn').click(function() {
+    $('#saveGradeBtn').click(function() {
         const studentId = $('#editStudentId').val();
-        const lessonColumnId = $('#editLessonColumnId').val();
-        const value = $('#editMarkValue').val();
-        const comment = $('#editMarkComment').val();
+        const columnId = $('#editColumnId').val();
+        const value = $('#editGradeValue').val();
+        const comment = $('#editGradeComment').val();
 
         $.ajax({
-            url: '{% url "journal:update_student_mark" %}',
+            url: '{% url "journal:update_student_grade" %}',
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({
                 student_id: studentId,
-                lesson_column_id: lessonColumnId,
+                lesson_column_id: columnId,
                 value: value,
                 comment: comment
             }),
@@ -277,24 +430,8 @@ $(document).ready(function() {
             },
             success: function(response) {
                 if (response.success) {
-                    // Обновляем ячейку
-                    const cell = $(`.grade-cell[data-student-id="${studentId}"][data-lesson-column-id="${lessonColumnId}"]`);
-
-                    if (response.mark && response.mark.value) {
-                        cell.html(`
-                            <span class="badge ${getMarkColor(response.mark.value)}"
-                                  data-mark-id="${response.mark.id}">
-                                ${response.mark.value}
-                            </span>
-                        `);
-                    } else {
-                        cell.html('<span class="text-muted">-</span>');
-                    }
-
-                    // Обновляем средний балл и четвертную оценку
-                    updateStudentStats(studentId, response);
-
-                    bootstrap.Modal.getInstance(document.getElementById('editMarkModal')).hide();
+                    updateGradeCell(studentId, columnId, response);
+                    bootstrap.Modal.getInstance(document.getElementById('editGradeModal')).hide();
                     showToast('Оценка сохранена', 'success');
                 } else {
                     showToast('Ошибка: ' + response.error, 'error');
@@ -304,18 +441,18 @@ $(document).ready(function() {
     });
 
     // Удаление оценки
-    $('#deleteMarkBtn').click(function() {
+    $('#deleteGradeBtn').click(function() {
         if (confirm('Удалить оценку?')) {
             const studentId = $('#editStudentId').val();
-            const lessonColumnId = $('#editLessonColumnId').val();
+            const columnId = $('#editColumnId').val();
 
             $.ajax({
-                url: '{% url "journal:update_student_mark" %}',
+                url: '{% url "journal:update_student_grade" %}',
                 method: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({
                     student_id: studentId,
-                    lesson_column_id: lessonColumnId,
+                    lesson_column_id: columnId,
                     value: null
                 }),
                 headers: {
@@ -323,12 +460,8 @@ $(document).ready(function() {
                 },
                 success: function(response) {
                     if (response.success) {
-                        const cell = $(`.grade-cell[data-student-id="${studentId}"][data-lesson-column-id="${lessonColumnId}"]`);
-                        cell.html('<span class="text-muted">-</span>');
-
-                        updateStudentStats(studentId, response);
-
-                        bootstrap.Modal.getInstance(document.getElementById('editMarkModal')).hide();
+                        updateGradeCell(studentId, columnId, response);
+                        bootstrap.Modal.getInstance(document.getElementById('editGradeModal')).hide();
                         showToast('Оценка удалена', 'success');
                     }
                 }
@@ -336,25 +469,45 @@ $(document).ready(function() {
         }
     });
 
-    // Управление столбцами
-    $('#manageColumnsBtn').click(function() {
-        const modal = new bootstrap.Modal(document.getElementById('manageColumnsModal'));
-        modal.show();
-    });
+    // Обновление превью столбца
+    function updateColumnPreview() {
+        const selectedOption = $('#manageGradeTypeId option:selected');
+        if (selectedOption.val()) {
+            const color = selectedOption.data('color');
+            const weight = selectedOption.data('weight');
+            const title = $('#manageColumnTitle').val() || selectedOption.text().split(' (вес:')[0];
 
-    // Добавление столбца к уроку
-    $(document).on('click', '.add-column-btn', function() {
-        const columnId = $(this).data('column-id');
-        const lessonId = {{ lessons_with_columns.0.lesson.id|default:0 }};
+            $('#previewBadge').css('background-color', color);
+            $('#previewBadge').text(selectedOption.text().substring(0, 2));
+            $('#previewTitle').text(title);
+            $('#previewWeight').text(weight);
+            $('#columnPreview').show();
+        } else {
+            $('#columnPreview').hide();
+        }
+    }
+
+    $('#manageGradeTypeId, #manageColumnTitle').on('change keyup', updateColumnPreview);
+
+    // Сохранение изменений столбца
+    $('#saveColumnBtn').click(function() {
+        const columnId = $('#manageColumnId').val();
+        const gradeTypeId = $('#manageGradeTypeId').val();
+        const title = $('#manageColumnTitle').val();
+
+        if (!gradeTypeId) {
+            showToast('Выберите тип оценки', 'error');
+            return;
+        }
 
         $.ajax({
-            url: '{% url "journal:manage_lesson_columns" %}',
+            url: '{% url "journal:manage_lesson_column" %}',
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({
-                action: 'add_column',
-                lesson_id: lessonId,
-                column_id: columnId
+                action: 'update_column',
+                column_id: columnId,
+                grade_type_id: gradeTypeId
             }),
             headers: {
                 'X-CSRFToken': getCookie('csrftoken')
@@ -369,18 +522,18 @@ $(document).ready(function() {
         });
     });
 
-    // Удаление столбца из урока
-    $(document).on('click', '.remove-column-btn', function() {
-        if (confirm('Удалить столбец? Все оценки в этом столбце будут удалены.')) {
-            const lessonColumnId = $(this).data('lesson-column-id');
+    // Удаление столбца
+    $('#deleteColumnBtn').click(function() {
+        if (confirm('Удалить этот столбец? Все оценки в нем будут удалены.')) {
+            const columnId = $('#manageColumnId').val();
 
             $.ajax({
-                url: '{% url "journal:manage_lesson_columns" %}',
+                url: '{% url "journal:manage_lesson_column" %}',
                 method: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({
-                    action: 'remove_column',
-                    column_id: lessonColumnId
+                    action: 'delete_column',
+                    column_id: columnId
                 }),
                 headers: {
                     'X-CSRFToken': getCookie('csrftoken')
@@ -396,44 +549,100 @@ $(document).ready(function() {
         }
     });
 
+    // Добавление нового столбца
+    $('#saveAddColumnBtn').click(function() {
+        const lessonId = $('#addLessonId').val();
+        const gradeTypeId = $('#addGradeTypeId').val();
+        const title = $('#addColumnTitle').val();
+
+        if (!gradeTypeId) {
+            showToast('Выберите тип оценки', 'error');
+            return;
+        }
+
+        $.ajax({
+            url: '{% url "journal:manage_lesson_column" %}',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                action: 'add_column',
+                lesson_id: lessonId,
+                grade_type_id: gradeTypeId
+            }),
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            success: function(response) {
+                if (response.success) {
+                    location.reload();
+                } else {
+                    showToast('Ошибка: ' + response.error, 'error');
+                }
+            }
+        });
+    });
+
+    // Функция обновления ячейки с оценкой
+    function updateGradeCell(studentId, columnId, response) {
+        const cell = $(`.grade-cell[data-student-id="${studentId}"][data-column-id="${columnId}"]`);
+
+        if (response.grade && response.grade.value) {
+            const color = getGradeColor(response.grade.value);
+            cell.html(`
+                <span class="badge ${color}"
+                      data-grade-id="${response.grade.id}">
+                    ${response.grade.value}
+                </span>
+            `);
+        } else {
+            cell.html('<span class="text-muted">-</span>');
+        }
+
+        // Обновляем средний балл
+        if (response.average_grade !== undefined) {
+            const avgBadge = $(`#avg-${studentId}`);
+            avgBadge.text(response.average_grade !== null ?
+                         response.average_grade.toFixed(2) : '-');
+
+            // Обновляем цвет баджа
+            avgBadge.removeClass('bg-success bg-primary bg-warning bg-danger bg-secondary');
+
+            if (response.average_grade >= 4.5) {
+                avgBadge.addClass('bg-success');
+            } else if (response.average_grade >= 3.5) {
+                avgBadge.addClass('bg-primary');
+            } else if (response.average_grade >= 2.5) {
+                avgBadge.addClass('bg-warning');
+            } else if (response.average_grade > 0) {
+                avgBadge.addClass('bg-danger');
+            } else {
+                avgBadge.addClass('bg-secondary');
+            }
+        }
+
+        // Обновляем четвертную оценку
+        if (response.quarterly_grade) {
+            const qGradeCell = $(`tr[data-student-id="${studentId}"] td:last-child`);
+            if (response.quarterly_grade.grade) {
+                const grade = response.quarterly_grade.grade;
+                qGradeCell.html(`
+                    <span class="badge ${getGradeColor(grade)}">
+                        ${grade}
+                    </span>
+                    ${response.quarterly_grade.calculated_grade ?
+                      `<br><small class="text-muted">(${response.quarterly_grade.calculated_grade.toFixed(2)})</small>` : ''}
+                `);
+            }
+        }
+    }
+
     // Вспомогательные функции
-    function getMarkColor(grade) {
+    function getGradeColor(grade) {
         switch(parseInt(grade)) {
             case 5: return 'bg-success';
             case 4: return 'bg-primary';
             case 3: return 'bg-warning';
             default: return 'bg-danger';
-        }
-    }
-
-    function updateStudentStats(studentId, response) {
-        // Обновляем средний балл
-        const avgCell = $(`tr[data-student-id="${studentId}"] td:nth-child(2) .badge`);
-        if (response.quarterly_grade && response.quarterly_grade.calculated_grade) {
-            const avg = response.quarterly_grade.calculated_grade;
-            avgCell.text(avg.toFixed(2));
-            avgCell.removeClass('bg-success bg-primary bg-warning bg-danger bg-secondary');
-
-            if (avg >= 4.5) avgCell.addClass('bg-success');
-            else if (avg >= 3.5) avgCell.addClass('bg-primary');
-            else if (avg >= 2.5) avgCell.addClass('bg-warning');
-            else if (avg > 0) avgCell.addClass('bg-danger');
-            else avgCell.addClass('bg-secondary');
-        }
-
-        // Обновляем четвертную оценку
-        const qGradeCell = $(`tr[data-student-id="${studentId}"] td:last-child`);
-        if (response.quarterly_grade && response.quarterly_grade.grade) {
-            const grade = response.quarterly_grade.grade;
-            qGradeCell.html(`
-                <span class="badge ${getMarkColor(grade)}">
-                    ${grade}
-                </span>
-                ${response.quarterly_grade.calculated_grade ?
-                  `<br><small class="text-muted">(${response.quarterly_grade.calculated_grade.toFixed(2)})</small>` : ''}
-            `);
-        } else {
-            qGradeCell.html('<span class="text-muted">-</span>');
         }
     }
 
@@ -453,7 +662,6 @@ $(document).ready(function() {
     }
 
     function showToast(message, type) {
-        // Реализация уведомлений
         const toast = $(`
             <div class="toast align-items-center text-bg-${type === 'success' ? 'success' : 'danger'} border-0"
                  style="position: fixed; top: 20px; right: 20px; z-index: 9999;">
