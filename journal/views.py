@@ -133,7 +133,7 @@ def class_subject_journal(request, class_id, subject_id, quarter_id=None):
         lessons_with_columns.append({
             'lesson': lesson,
             'columns': columns,
-            'has_columns': columns.exists()
+            'has_columns': len(columns)
         })
 
         # Добавляем столбцы в общий список

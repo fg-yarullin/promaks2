@@ -3,9 +3,22 @@ body {
     padding-top: 56px;
 }
 
+#app {
+    height: calc(100vh - 112px);
+}
+
+#footer {
+    height: 56px;
+    font-weight: bold;
+    /*display: flex;*/
+    /*justify-content: center;*/
+    /*align-items: center;*/
+}
+
 .sidebar {
     position: fixed;
     top: 56px;
+    /*top: 0;*/
     left: 0;
     bottom: 0;
     z-index: 100;
