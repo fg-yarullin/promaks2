@@ -1,0 +1,150 @@
+{% extends 'layouts/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid">
+    <h2 class="mb-4">Все мои оценки</h2>
+    
+    <!-- Фильтры -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Класс</label>
+                    <select name="class_id" class="form-select">
+                        <option value="">Все классы</option>
+                        {% for class in classes %}
+                        <option value="{{ class.id }}" {% if filters.class_id == class.id|stringformat:"i" %}selected{% endif %}>
+                            {{ class.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Предмет</label>
+                    <select name="subject_id" class="form-select">
+                        <option value="">Все предметы</option>
+                        {% for subject in subjects %}
+                        <option value="{{ subject.id }}" {% if filters.subject_id == subject.id|stringformat:"i" %}selected{% endif %}>
+                            {{ subject.title }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Четверть</label>
+                    <select name="quarter_id" class="form-select">
+                        <option value="">Все четверти</option>
+                        {% for quarter in quarters %}
+                        <option value="{{ quarter.id }}" {% if filters.quarter_id == quarter.id|stringformat:"i" %}selected{% endif %}>
+                            {{ quarter.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">Применить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Статистика -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">{{ total_marks }}</h5>
+                    <p class="card-text text-muted">Всего оценок</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">{{ avg_grade|default:"-" }}</h5>
+                    <p class="card-text text-muted">Средний балл</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">{{ classes|length }}</h5>
+                    <p class="card-text text-muted">Классов</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">{{ subjects|length }}</h5>
+                    <p class="card-text text-muted">Предметов</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Таблица оценок -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Оценки</h5>
+            <span class="badge bg-primary">{{ marks|length }}</span>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Дата</th>
+                            <th>Ученик</th>
+                            <th>Класс</th>
+                            <th>Предмет</th>
+                            <th>Тип оценки</th>
+                            <th>Оценка</th>
+                            <th>Комментарий</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for mark in marks %}
+                        <tr>
+                            <td>{{ mark.created_at|date:"d.m.Y H:i" }}</td>
+                            <td>
+                                <strong>{{ mark.student.user.last_name }} {{ mark.student.user.first_name }}</strong>
+                                {% if mark.student.user.patronymic %}
+                                <br><small>{{ mark.student.user.patronymic }}</small>
+                                {% endif %}
+                            </td>
+                            <td>{{ mark.lesson_grade_column.lesson.class_group.name }}</td>
+                            <td>{{ mark.lesson_grade_column.lesson.subject.title }}</td>
+                            <td>
+                                <span class="badge bg-secondary">
+                                    {{ mark.lesson_grade_column.grade_column.title }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge 
+                                    {% if mark.value == 5 %}bg-success
+                                    {% elif mark.value == 4 %}bg-primary
+                                    {% elif mark.value == 3 %}bg-warning
+                                    {% else %}bg-danger{% endif %}">
+                                    {{ mark.value }}
+                                </span>
+                            </td>
+                            <td>{{ mark.comment|truncatechars:30|default:"-" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                <i class="bi bi-journal-x" style="font-size: 2rem;"></i>
+                                <p class="mt-2">Нет оценок</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

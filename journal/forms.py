@@ -6,7 +6,7 @@ from .models import Mark, Attendance, Homework
 class MarkForm(forms.ModelForm):
     class Meta:
         model = Mark
-        fields = ['value', 'mark_type', 'comment']
+        fields = ['value', 'comment']
         widgets = {
             'value': forms.Select(choices=[(i, str(i)) for i in range(1, 6)]),
             'comment': forms.Textarea(attrs={'rows': 2, 'placeholder': 'Комментарий...'}),

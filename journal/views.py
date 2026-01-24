@@ -1,29 +1,29 @@
 # journal/views.py
-
-# journal/views.py
+from django.db import models
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse
 from django.utils import timezone
-from django.db.models import Avg, Count, Q, Sum, F
+from django.db.models import Q, Count, Avg, Sum
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.core.exceptions import PermissionDenied
 import json
-from datetime import datetime, timedelta
 
-from users.decorators import teacher_required, class_teacher_required
-from school_structure.models import Quarter, ClassGroup, Subject, Lesson, AcademicYear, TeacherWorkload
+from users.decorators import teacher_required
+from school_structure.models import Quarter, ClassGroup, Subject, Lesson, AcademicYear
 from users.models import StudentProfile, TeacherProfile
-from .models import Mark, Attendance, Homework, QuarterlyGrade, YearlyGrade
-from .forms import MarkForm, AttendanceForm, QuickGradeForm, QuarterlyGradeForm
+from .models import (
+    GradeType, LessonColumn, StudentGrade,
+    QuarterlyGrade, YearlyGrade, GradeColumn, LessonGradeColumn, StudentMark
+)
 
 
 @login_required
 @teacher_required
 def teacher_journal(request):
-    """Главная страница журнала учителя - выбор класса и предмета"""
+    """Журнал учителя с настраиваемыми столбцами"""
     teacher = request.user.teacher_profile
 
     # Получаем текущую четверть
@@ -31,7 +31,511 @@ def teacher_journal(request):
         current_quarter = Quarter.objects.get(is_current=True)
     except Quarter.DoesNotExist:
         current_quarter = None
-        messages.warning(request, 'Текущая четверть не установлена. Обратитесь к администратору.')
+        messages.warning(request, 'Текущая четверть не установлена')
+
+    # Получаем предметы и классы учителя
+    teacher_lessons = Lesson.objects.filter(
+        teacher=teacher,
+        quarter=current_quarter
+    ).select_related('subject', 'class_group', 'quarter')
+
+    # Группируем по предметам и классам
+    subjects_data = {}
+    for lesson in teacher_lessons:
+        key = (lesson.subject_id, lesson.class_group_id)
+        if key not in subjects_data:
+            subjects_data[key] = {
+                'subject': lesson.subject,
+                'class_group': lesson.class_group,
+                'lessons_count': 0,
+                'lessons': []
+            }
+        subjects_data[key]['lessons_count'] += 1
+        subjects_data[key]['lessons'].append(lesson)
+
+    # Получаем все типы оценок
+    grade_types = GradeType.objects.filter(is_default=True).first()
+
+    context = {
+        'teacher': teacher,
+        'current_quarter': current_quarter,
+        'subjects_data': list(subjects_data.values()),
+        'default_grade_type': grade_types,
+    }
+    return render(request, 'journal/teacher_journal.html', context)
+
+
+@login_required
+@teacher_required
+def class_subject_journal(request, class_id, subject_id, quarter_id=None):
+    """Журнал по классу и предмету с настраиваемыми столбцами"""
+    teacher = request.user.teacher_profile
+    class_group = get_object_or_404(ClassGroup, id=class_id)
+    subject = get_object_or_404(Subject, id=subject_id)
+
+    # Определяем четверть
+    if quarter_id:
+        quarter = get_object_or_404(Quarter, id=quarter_id)
+    else:
+        try:
+            quarter = Quarter.objects.get(is_current=True)
+        except Quarter.DoesNotExist:
+            messages.error(request, 'Текущая четверть не установлена')
+            return redirect('journal:teacher_journal_columns')
+
+    # Проверяем права
+    has_access = Lesson.objects.filter(
+        teacher=teacher,
+        class_group=class_group,
+        subject=subject,
+        quarter=quarter
+    ).exists()
+
+    if not has_access:
+        raise PermissionDenied("У вас нет доступа к этому журналу")
+
+    # Получаем учеников
+    students = class_group.students.all().select_related('user').order_by(
+        'user__last_name', 'user__first_name'
+    )
+
+    # Получаем уроки с предварительной загрузкой столбцов
+    lessons = Lesson.objects.filter(
+        class_group=class_group,
+        subject=subject,
+        quarter=quarter
+    ).order_by('date', 'lesson_number')
+
+    # Для каждого урока проверяем наличие столбцов
+    lessons_with_columns = []
+    default_grade_type = GradeType.objects.filter(is_default=True).first()
+
+    # Сначала собираем все столбцы и их ID
+    all_columns = []
+
+    for lesson in lessons:
+        # Получаем столбцы урока
+        columns = LessonColumn.objects.filter(
+            lesson=lesson,
+            is_visible=True
+        ).select_related('grade_type').order_by('order')
+
+        # Если столбцов нет, создаем один пустой столбец
+        if not columns.exists() and default_grade_type:
+            column = LessonColumn.objects.create(
+                lesson=lesson,
+                grade_type=default_grade_type,
+                title=default_grade_type.title,
+                order=10
+            )
+            columns = [column]
+
+        lessons_with_columns.append({
+            'lesson': lesson,
+            'columns': columns,
+            'has_columns': len(columns)
+        })
+
+        # Добавляем столбцы в общий список
+        all_columns.extend(columns)
+
+    # Получаем все ID столбцов
+    column_ids = [col.id for col in all_columns]
+
+    # Получаем все оценки для этих столбцов и учеников
+    grades = StudentGrade.objects.filter(
+        lesson_column_id__in=column_ids,
+        student__in=students
+    ).select_related('lesson_column', 'teacher__user')
+
+    # Организуем оценки в словарь для быстрого доступа
+    # Используем nested dictionary: grades_dict[student_id][column_id] = grade
+    grades_dict = {}
+    for grade in grades:
+        student_id = grade.student_id
+        column_id = grade.lesson_column_id
+
+        if student_id not in grades_dict:
+            grades_dict[student_id] = {}
+
+        grades_dict[student_id][column_id] = {
+            'id': grade.id,
+            'value': grade.value,
+            'comment': grade.comment,
+            'created_at': grade.created_at,
+            'teacher_name': grade.teacher.user.get_full_name() if grade.teacher else None
+        }
+
+    # Получаем четвертные оценки
+    quarterly_grades = QuarterlyGrade.objects.filter(
+        student__in=students,
+        subject=subject,
+        quarter=quarter
+    )
+    quarterly_dict = {q.student_id: q for q in quarterly_grades}
+
+    # Рассчитываем статистику для каждого ученика
+    student_stats = []
+    for student in students:
+        student_grades = []
+        student_grades_dict = grades_dict.get(student.id, {})
+
+        # Собираем все оценки студента
+        for column in all_columns:
+            grade_data = student_grades_dict.get(column.id)
+            if grade_data:
+                student_grades.append({
+                    'value': grade_data['value'],
+                    'weight': column.grade_type.weight
+                })
+
+        # Рассчитываем средневзвешенный балл
+        total_weighted = 0
+        total_weight = 0
+
+        for grade in student_grades:
+            total_weighted += grade['value'] * grade['weight']
+            total_weight += grade['weight']
+
+        avg_grade = total_weighted / total_weight if total_weight > 0 else None
+
+        student_stats.append({
+            'student': student,
+            'avg_grade': round(avg_grade, 2) if avg_grade else None,
+            'grades_count': len(student_grades),
+            'quarterly_grade': quarterly_dict.get(student.id)
+        })
+
+    # Получаем все типы оценок для выпадающего списка
+    grade_types = GradeType.objects.all().order_by('order')
+
+    # Получаем другие четверти для переключения
+    other_quarters = Quarter.objects.filter(
+        academic_year=quarter.academic_year
+    ).exclude(id=quarter.id).order_by('number')
+
+    context = {
+        'class_group': class_group,
+        'subject': subject,
+        'quarter': quarter,
+        'students': students,
+        'lessons_with_columns': lessons_with_columns,
+        'grades_dict': grades_dict,  # Теперь это nested dict
+        'student_stats': student_stats,
+        'grade_types': grade_types,
+        'other_quarters': other_quarters,
+        'default_grade_type': default_grade_type,
+        'total_columns': sum(len(lc['columns']) for lc in lessons_with_columns),
+    }
+
+    return render(request, 'journal/class_subject_journal.html', context)
+
+
+@csrf_exempt
+@require_POST
+@login_required
+@teacher_required
+def update_student_grade(request):
+    """Обновление оценки ученика"""
+    try:
+        data = json.loads(request.body)
+        student_id = data.get('student_id')
+        lesson_column_id = data.get('lesson_column_id')
+        value = data.get('value')
+        comment = data.get('comment', '')
+
+        student = get_object_or_404(StudentProfile, id=student_id)
+        lesson_column = get_object_or_404(LessonColumn, id=lesson_column_id)
+        teacher = request.user.teacher_profile
+
+        # Проверяем права
+        if lesson_column.lesson.teacher != teacher:
+            return JsonResponse({
+                'success': False,
+                'error': 'У вас нет прав для редактирования этого урока'
+            })
+
+        # Проверяем, что четверть не завершена
+        if lesson_column.lesson.quarter.end_date < timezone.now().date():
+            return JsonResponse({
+                'success': False,
+                'error': 'Четверть завершена, редактирование невозможно'
+            })
+
+        response_data = {'success': True}
+
+        # Обработка оценки
+        if value is None or value == '' or value == 'null':
+            # Удаляем оценку
+            deleted_count, _ = StudentGrade.objects.filter(
+                student=student,
+                lesson_column=lesson_column
+            ).delete()
+            response_data['grade'] = {
+                'deleted': True,
+                'deleted_count': deleted_count
+            }
+        else:
+            # Проверяем значение
+            try:
+                value_int = int(value)
+                if not (1 <= value_int <= 5):
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Оценка должна быть от 1 до 5'
+                    })
+
+                # Создаем или обновляем оценку
+                grade, created = StudentGrade.objects.update_or_create(
+                    student=student,
+                    lesson_column=lesson_column,
+                    defaults={
+                        'value': value_int,
+                        'comment': comment,
+                        'teacher': teacher
+                    }
+                )
+
+                response_data['grade'] = {
+                    'id': grade.id,
+                    'value': grade.value,
+                    'created': created,
+                    'weight': grade.weight
+                }
+            except ValueError:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Некорректное значение оценки'
+                })
+
+        # Пересчитываем четвертную оценку
+        quarterly_grade, _ = QuarterlyGrade.objects.get_or_create(
+            student=student,
+            subject=lesson_column.lesson.subject,
+            quarter=lesson_column.lesson.quarter
+        )
+        quarterly_grade.save()
+
+        # Рассчитываем новый средний балл
+        all_grades = StudentGrade.objects.filter(
+            student=student,
+            lesson_column__lesson__subject=lesson_column.lesson.subject,
+            lesson_column__lesson__quarter=lesson_column.lesson.quarter
+        )
+
+        total_weighted = 0
+        total_weight = 0
+        for grade in all_grades:
+            total_weighted += grade.value * grade.weight
+            total_weight += grade.weight
+
+        avg_grade = total_weighted / total_weight if total_weight > 0 else None
+
+        response_data.update({
+            'quarterly_grade': {
+                'id': quarterly_grade.id,
+                'grade': quarterly_grade.grade,
+                'calculated_grade': quarterly_grade.calculated_grade,
+            },
+            'average_grade': round(avg_grade, 2) if avg_grade else None
+        })
+
+        return JsonResponse(response_data)
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@csrf_exempt
+@require_POST
+@login_required
+@teacher_required
+def manage_lesson_column(request):
+    """Управление столбцами урока (добавление, изменение, удаление)"""
+    try:
+        data = json.loads(request.body)
+        action = data.get('action')
+        lesson_id = data.get('lesson_id')
+        column_id = data.get('column_id')
+        grade_type_id = data.get('grade_type_id')
+        lesson_grade_column = LessonGradeColumn.objects.filter('', column_id).first()
+        # lesson_grade_column = get_object_or_404(LessonGradeColumn, 'column_id', column_id)
+        print(action, lesson_id, column_id, grade_type_id)
+        pass
+
+        lesson = get_object_or_404(Lesson, id=lesson_id)
+        teacher = request.user.teacher_profile
+
+
+        # Проверяем права
+        if lesson.teacher != teacher:
+            return JsonResponse({
+                'success': False,
+                'error': 'У вас нет прав для редактирования этого урока'
+            })
+
+        if action == 'add_column':
+            # Добавляем новый столбец
+            grade_type = get_object_or_404(GradeType, id=grade_type_id)
+
+            # Определяем порядок
+            max_order = LessonColumn.objects.filter(
+                lesson=lesson
+            ).aggregate(models.Max('order'))['order__max'] or 0
+
+            column = LessonColumn.objects.create(
+                lesson=lesson,
+                grade_type=grade_type,
+                title=grade_type.title,
+                order=max_order + 10
+            )
+
+            return JsonResponse({
+                'success': True,
+                'column': {
+                    'id': column.id,
+                    'title': column.title,
+                    'grade_type': {
+                        'id': grade_type.id,
+                        'title': grade_type.title,
+                        'short_title': grade_type.short_title,
+                        'color': grade_type.color,
+                        'weight': grade_type.weight
+                    },
+                    'order': column.order
+                }
+            })
+
+        elif action == 'update_column':
+            # Изменяем тип оценки в столбце
+            column = get_object_or_404(LessonColumn, id=column_id, lesson=lesson)
+            grade_type = get_object_or_404(GradeType, id=grade_type_id)
+
+            column.grade_type = grade_type
+            column.title = grade_type.title
+            column.save()
+
+            return JsonResponse({
+                'success': True,
+                'column': {
+                    'id': column.id,
+                    'title': column.title,
+                    'grade_type': {
+                        'id': grade_type.id,
+                        'title': grade_type.title,
+                        'short_title': grade_type.short_title,
+                        'color': grade_type.color,
+                        'weight': grade_type.weight
+                    }
+                }
+            })
+
+        elif action == 'delete_column':
+            # Удаляем столбец
+            column = get_object_or_404(LessonColumn, id=column_id, lesson=lesson)
+
+            # Не позволяем удалить последний столбец
+            column_count = LessonColumn.objects.filter(lesson=lesson).count()
+            if column_count <= 1:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Нельзя удалить последний столбец урока'
+                })
+
+            # Удаляем все оценки в этом столбце
+            StudentGrade.objects.filter(lesson_column=column).delete()
+            column.delete()
+
+            return JsonResponse({'success': True})
+
+        elif action == 'reorder_columns':
+            # Изменяем порядок столбцов
+            columns_order = data.get('columns', [])
+
+            for item in columns_order:
+                column = get_object_or_404(LessonColumn, id=item['id'], lesson=lesson)
+                column.order = item['order']
+                column.save()
+
+            return JsonResponse({'success': True})
+
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': 'Неизвестное действие'
+            })
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+@teacher_required
+def get_column_stats(request, column_id):
+    """Получение статистики по столбцу"""
+    column = get_object_or_404(LessonColumn, id=column_id)
+    teacher = request.user.teacher_profile
+
+    # Проверяем права
+    if column.lesson.teacher != teacher:
+        return JsonResponse({'error': 'Доступ запрещен'}, status=403)
+
+    # Получаем все оценки в этом столбце
+    grades = StudentGrade.objects.filter(lesson_column=column)
+
+    # Получаем статистику
+    total_grades = grades.count()
+    avg_grade = grades.aggregate(avg=Avg('value'))['avg']
+
+    # Преобразуем QuerySet grade_distribution в список словарей
+    grade_distribution_qs = grades.values('value').annotate(
+        count=Count('id')
+    ).order_by('value')
+
+    # Преобразуем QuerySet в список
+    grade_distribution = list(grade_distribution_qs)
+
+    # Формируем информацию о столбце в сериализуемом формате
+    column_info = {
+        'id': column.id,
+        'title': column.title,
+        'grade_type': {
+            'id': column.grade_type.id,
+            'title': column.grade_type.title,
+            'short_title': column.grade_type.short_title,
+            'weight': float(column.grade_type.weight),  # Преобразуем Decimal в float
+            'color': column.grade_type.color,
+        }
+    }
+
+    stats = {
+        'total_grades': total_grades,
+        'average_grade': float(avg_grade) if avg_grade else None,
+        'grade_distribution': grade_distribution,
+        'column_info': column_info
+    }
+
+    return JsonResponse(stats)
+
+
+@login_required
+@teacher_required
+def teacher_journal(request):
+    """Новая версия журнала учителя"""
+    teacher = request.user.teacher_profile
+
+    # Получаем текущую четверть
+    try:
+        current_quarter = Quarter.objects.get(is_current=True)
+    except Quarter.DoesNotExist:
+        current_quarter = None
+        messages.warning(request, 'Текущая четверть не установлена')
+
+    # Получаем предметы и классы учителя
+    teacher_lessons = Lesson.objects.filter(
+        teacher=teacher,
+        quarter=current_quarter
+    ).select_related('subject', 'class_group')
 
     # Получаем предметы учителя в текущей четверти
     teacher_subjects = Subject.objects.filter(
@@ -56,37 +560,38 @@ def teacher_journal(request):
                 'classes': classes
             })
 
-    # Альтернативно: получаем все классы учителя
-    teacher_classes = ClassGroup.objects.filter(
-        lessons__teacher=teacher,
-        lessons__quarter=current_quarter
-    ).distinct().annotate(
-        student_count=Count('students'),
-        subject_count=Count('lessons__subject', distinct=True)
-    )
 
-    # Получаем все доступные четверти
-    if current_quarter:
-        quarters = Quarter.objects.filter(
-            academic_year=current_quarter.academic_year
-        ).order_by('number')
-    else:
-        quarters = Quarter.objects.none()
+    # Группируем по предметам
+    subjects_data = {}
+    for lesson in teacher_lessons:
+        subject = lesson.subject
+        if subject.id not in subjects_data:
+            subjects_data[subject.id] = {
+                'subject': subject,
+                'classes': set(),
+                'lessons_count': 0
+            }
+        subjects_data[subject.id]['classes'].add(lesson.class_group)
+        subjects_data[subject.id]['lessons_count'] += 1
+
+    # Преобразуем set в list для шаблона
+    for data in subjects_data.values():
+        data['classes'] = list(data['classes'])
+        data['classes_count'] = len(data['classes'])
 
     context = {
         'teacher': teacher,
         'current_quarter': current_quarter,
         'subjects_with_classes': subjects_with_classes,
-        'teacher_classes': teacher_classes,
-        'quarters': quarters,
+        'subjects_data': list(subjects_data.values()),
     }
     return render(request, 'journal/teacher_journal.html', context)
 
 
 @login_required
 @teacher_required
-def class_subject_journal(request, class_id, subject_id, quarter_id=None):
-    """Журнал по конкретному классу и предмету"""
+def _class_subject_journal(request, class_id, subject_id, quarter_id=None):
+    """Новая версия журнала по классу и предмету с поддержкой нескольких столбцов"""
     teacher = request.user.teacher_profile
     class_group = get_object_or_404(ClassGroup, id=class_id)
     subject = get_object_or_404(Subject, id=subject_id)
@@ -101,7 +606,7 @@ def class_subject_journal(request, class_id, subject_id, quarter_id=None):
             messages.error(request, 'Текущая четверть не установлена')
             return redirect('journal:teacher_journal')
 
-    # Проверяем права доступа
+    # Проверяем права
     has_access = Lesson.objects.filter(
         teacher=teacher,
         class_group=class_group,
@@ -112,62 +617,94 @@ def class_subject_journal(request, class_id, subject_id, quarter_id=None):
     if not has_access:
         raise PermissionDenied("У вас нет доступа к этому журналу")
 
-    # Получаем учеников класса
+    # Получаем учеников
     students = class_group.students.all().select_related('user').order_by(
         'user__last_name', 'user__first_name'
     )
 
-    # Получаем уроки по предмету в этой четверти
+    # Получаем уроки
     lessons = Lesson.objects.filter(
         class_group=class_group,
         subject=subject,
         quarter=quarter
     ).order_by('date', 'lesson_number')
 
-    # Предварительная загрузка данных для оптимизации
-    marks = Mark.objects.filter(
-        lesson__in=lessons,
-        student__in=students
-    ).select_related('student', 'lesson')
+    # Получаем стандартные типы оценок
+    default_columns = GradeColumn.objects.filter(is_active=True).order_by('order')
 
-    attendances = Attendance.objects.filter(
-        lesson__in=lessons,
-        student__in=students
-    ).select_related('student', 'lesson')
+    # Для каждого урока получаем его столбцы
+    lessons_with_columns = []
+    for lesson in lessons:
+        # Получаем столбцы для этого урока
+        lesson_columns = LessonGradeColumn.objects.filter(
+            lesson=lesson
+        ).select_related('grade_column').order_by('order')
 
-    # Организуем данные для удобного доступа в шаблоне
+        # Если столбцов нет, создаем стандартные
+        if not lesson_columns.exists():
+            for idx, col in enumerate(default_columns):
+                lesson_col, created = LessonGradeColumn.objects.get_or_create(
+                    lesson=lesson,
+                    grade_column=col,
+                    defaults={'order': idx * 10}
+                )
+                lesson_columns = LessonGradeColumn.objects.filter(
+                    lesson=lesson
+                ).select_related('grade_column').order_by('order')
+
+        lessons_with_columns.append({
+            'lesson': lesson,
+            'columns': list(lesson_columns),
+            'has_columns': lesson_columns.exists()
+        })
+
+    # Получаем все оценки для этих уроков
+    lesson_column_ids = []
+    for lesson_data in lessons_with_columns:
+        for col in lesson_data['columns']:
+            lesson_column_ids.append(col.id)
+
+    # Получаем оценки учеников
+    marks = StudentMark.objects.filter(
+        lesson_grade_column_id__in=lesson_column_ids,
+        student__in=students
+    ).select_related('lesson_grade_column', 'teacher__user')
+
+    # Организуем оценки для быстрого доступа
     marks_dict = {}
     for mark in marks:
-        if mark.student_id not in marks_dict:
-            marks_dict[mark.student_id] = {}
-        marks_dict[mark.student_id][mark.lesson_id] = mark
+        key = (mark.student_id, mark.lesson_grade_column_id)
+        marks_dict[key] = mark
 
-    attendance_dict = {}
-    for att in attendances:
-        if att.student_id not in attendance_dict:
-            attendance_dict[att.student_id] = {}
-        attendance_dict[att.student_id][att.lesson_id] = att
+    # Получаем четвертные оценки
+    quarterly_grades = QuarterlyGrade.objects.filter(
+        student__in=students,
+        subject=subject,
+        quarter=quarter
+    )
+    quarterly_dict = {q.student_id: q for q in quarterly_grades}
 
-    # Рассчитываем средние баллы для каждого ученика
+    # Рассчитываем статистику для каждого ученика
     student_stats = []
     for student in students:
+        # Получаем все оценки ученика за эту четверть
         student_marks = [m for m in marks if m.student_id == student.id]
-        avg_grade = None
-        if student_marks:
-            avg_grade = sum(m.value for m in student_marks) / len(student_marks)
 
-        # Количество оценок каждого типа
-        mark_types_count = {}
-        for mark_type in Mark.MarkType.values:
-            count = len([m for m in student_marks if m.mark_type == mark_type])
-            if count > 0:
-                mark_types_count[mark_type] = count
+        # Рассчитываем средневзвешенный балл
+        total_weighted = 0
+        total_weight = 0
+
+        for mark in student_marks:
+            total_weighted += mark.value * mark.weight
+            total_weight += mark.weight
+
+        avg_grade = total_weighted / total_weight if total_weight > 0 else None
 
         student_stats.append({
             'student': student,
             'avg_grade': round(avg_grade, 2) if avg_grade else None,
             'marks_count': len(student_marks),
-            'mark_types_count': mark_types_count
+            'quarterly_grade': quarterly_dict.get(student.id)
         })
 
     # Получаем другие четверти для переключения
@@ -175,26 +712,16 @@ def class_subject_journal(request, class_id, subject_id, quarter_id=None):
         academic_year=quarter.academic_year
     ).exclude(id=quarter.id).order_by('number')
 
-    # Получаем все предметы в этом классе для навигации
-    class_subjects = Subject.objects.filter(
-        lessons__class_group=class_group,
-        lessons__quarter=quarter,
-        lessons__teacher=teacher
-    ).distinct()
-
     context = {
         'class_group': class_group,
         'subject': subject,
         'quarter': quarter,
         'students': students,
-        'lessons': lessons,
+        'lessons_with_columns': lessons_with_columns,
         'marks_dict': marks_dict,
-        'attendance_dict': attendance_dict,
         'student_stats': student_stats,
         'other_quarters': other_quarters,
-        'class_subjects': class_subjects,
-        'attendance_statuses': Attendance.Status.choices,
-        'mark_types': Mark.MarkType.choices,
+        'default_columns': default_columns,
     }
 
     return render(request, 'journal/class_subject_journal.html', context)
@@ -205,29 +732,27 @@ def class_subject_journal(request, class_id, subject_id, quarter_id=None):
 @login_required
 @teacher_required
 def update_mark_attendance(request):
-    """AJAX-обработчик для обновления оценок и посещаемости"""
+    """Обновление оценки ученика в столбце урока"""
     try:
         data = json.loads(request.body)
         student_id = data.get('student_id')
-        lesson_id = data.get('lesson_id')
-        mark_value = data.get('mark_value')
-        attendance_status = data.get('attendance_status')
-        mark_type = data.get('mark_type', 'CLASSWORK')
+        lesson_column_id = data.get('lesson_column_id')
+        value = data.get('value')
         comment = data.get('comment', '')
 
         student = get_object_or_404(StudentProfile, id=student_id)
-        lesson = get_object_or_404(Lesson, id=lesson_id)
+        lesson_column = get_object_or_404(LessonGradeColumn, id=lesson_column_id)
         teacher = request.user.teacher_profile
 
         # Проверяем права
-        if lesson.teacher != teacher:
+        if lesson_column.lesson.teacher != teacher:
             return JsonResponse({
                 'success': False,
                 'error': 'У вас нет прав для редактирования этого урока'
             })
 
-        # Проверяем, что четверть еще не завершена
-        if lesson.quarter.end_date < timezone.now().date():
+        # Проверяем, что четверть не завершена
+        if lesson_column.lesson.quarter.end_date < timezone.now().date():
             return JsonResponse({
                 'success': False,
                 'error': 'Четверть завершена, редактирование невозможно'
@@ -235,74 +760,64 @@ def update_mark_attendance(request):
 
         response_data = {'success': True}
 
-        # ОБРАБОТКА ОЦЕНКИ
-        # Если mark_value не передано (None) или пустая строка - удаляем оценку
-        if mark_value is None or mark_value == '':
-            Mark.objects.filter(student=student, lesson=lesson).delete()
-            response_data['mark'] = {'deleted': True}
+        # Обработка оценки
+        if value is None or value == '' or value == 'null':
+            # Удаляем оценку
+            deleted_count, _ = StudentMark.objects.filter(
+                student=student,
+                lesson_grade_column=lesson_column
+            ).delete()
+            response_data['mark'] = {
+                'deleted': True,
+                'deleted_count': deleted_count
+            }
         else:
-            # Пытаемся преобразовать в целое число
+            # Проверяем значение
             try:
-                mark_value_int = int(mark_value)
-            except (ValueError, TypeError):
+                value_int = int(value)
+                if not (1 <= value_int <= 5):
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Оценка должна быть от 1 до 5'
+                    })
+
+                # Создаем или обновляем оценку
+                mark, created = StudentMark.objects.update_or_create(
+                    student=student,
+                    lesson_grade_column=lesson_column,
+                    defaults={
+                        'value': value_int,
+                        'comment': comment,
+                        'teacher': teacher
+                    }
+                )
+
+                response_data['mark'] = {
+                    'id': mark.id,
+                    'value': mark.value,
+                    'created': created,
+                    'weight': mark.weight
+                }
+            except ValueError:
                 return JsonResponse({
                     'success': False,
                     'error': 'Некорректное значение оценки'
                 })
 
-            if 1 <= mark_value_int <= 5:
-                mark, created = Mark.objects.update_or_create(
-                    student=student,
-                    lesson=lesson,
-                    defaults={
-                        'value': mark_value_int,
-                        'mark_type': mark_type,
-                        'comment': comment,
-                        'teacher': teacher
-                    }
-                )
-                response_data['mark'] = {
-                    'id': mark.id,
-                    'value': mark.value,
-                    'type': mark.mark_type,
-                    'created': created
-                }
-            else:
-                return JsonResponse({
-                    'success': False,
-                    'error': 'Оценка должна быть от 1 до 5'
-                })
-
-        # ОБРАБОТКА ПОСЕЩАЕМОСТИ
-        if attendance_status is not None:
-            if attendance_status == 'PRESENT':
-                # Удаляем запись о посещаемости, если ученик присутствовал
-                Attendance.objects.filter(student=student, lesson=lesson).delete()
-                response_data['attendance'] = {'status': 'PRESENT', 'deleted': True}
-            else:
-                att, created = Attendance.objects.update_or_create(
-                    student=student,
-                    lesson=lesson,
-                    defaults={
-                        'status': attendance_status,
-                        'note': data.get('attendance_note', '')
-                    }
-                )
-                response_data['attendance'] = {
-                    'id': att.id,
-                    'status': att.status,
-                    'display': att.get_status_display(),
-                    'created': created
-                }
-
-        # Пересчитываем средний балл ученика по предмету
-        avg_grade = Mark.objects.filter(
+        # Пересчитываем четвертную оценку
+        quarterly_grade, _ = QuarterlyGrade.objects.get_or_create(
             student=student,
-            lesson__subject=lesson.subject,
-            lesson__quarter=lesson.quarter
-        ).aggregate(avg=Avg('value'))['avg']
+            subject=lesson_column.lesson.subject,
+            quarter=lesson_column.lesson.quarter
+        )
+        quarterly_grade.save(force_recalculate=True)
 
-        response_data['average_grade'] = round(avg_grade, 2) if avg_grade else None
+        response_data['quarterly_grade'] = {
+            'id': quarterly_grade.id,
+            'grade': quarterly_grade.grade,
+            'calculated_grade': quarterly_grade.calculated_grade,
+            'suggested_grade': quarterly_grade.calculation_details.get('suggested_grade')
+        }
 
         return JsonResponse(response_data)
 
@@ -314,18 +829,14 @@ def update_mark_attendance(request):
 @require_POST
 @login_required
 @teacher_required
-def update_mark_attendance_old(request):
-    """AJAX-обработчик для обновления оценок и посещаемости"""
+def manage_lesson_columns(request):
+    """Управление столбцами урока"""
     try:
         data = json.loads(request.body)
-        student_id = data.get('student_id')
+        action = data.get('action')
         lesson_id = data.get('lesson_id')
-        mark_value = data.get('mark_value')
-        attendance_status = data.get('attendance_status')
-        mark_type = data.get('mark_type', 'CLASSWORK')
-        comment = data.get('comment', '')
+        column_id = data.get('column_id', None)
 
-        student = get_object_or_404(StudentProfile, id=student_id)
         lesson = get_object_or_404(Lesson, id=lesson_id)
         teacher = request.user.teacher_profile
 
@@ -336,857 +847,206 @@ def update_mark_attendance_old(request):
                 'error': 'У вас нет прав для редактирования этого урока'
             })
 
-        # Проверяем, что четверть еще не завершена
-        if lesson.quarter.end_date < timezone.now().date():
+        if action == 'add_column':
+            # Добавляем столбец к уроку
+            column = get_object_or_404(GradeColumn, id=column_id)
+
+            # Проверяем, нет ли уже такого столбца
+            if LessonGradeColumn.objects.filter(lesson=lesson, grade_column=column).exists():
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Этот столбец уже добавлен к уроку'
+                })
+
+            # Определяем порядок
+            max_order = LessonGradeColumn.objects.filter(
+                lesson=lesson
+            ).aggregate(models.Max('order'))['order__max'] or 0
+
+            lesson_column = LessonGradeColumn.objects.create(
+                lesson=lesson,
+                grade_column=column,
+                order=max_order + 10
+            )
+
             return JsonResponse({
-                'success': False,
-                'error': 'Четверть завершена, редактирование невозможно'
+                'success': True,
+                'lesson_column': {
+                    'id': lesson_column.id,
+                    'title': column.title,
+                    'short_title': column.short_title,
+                    'order': lesson_column.order
+                }
             })
 
-        response_data = {'success': True}
+        elif action == 'remove_column':
+            # Удаляем столбец из урока
+            lesson_column = get_object_or_404(LessonGradeColumn, id=column_id)
 
-        # Обработка оценки
-        if mark_value is not None:
-            mark_value = int(mark_value) if str(mark_value).isdigit() else None
+            # Удаляем все оценки в этом столбце
+            StudentMark.objects.filter(lesson_grade_column=lesson_column).delete()
+            lesson_column.delete()
 
-            if mark_value and 1 <= mark_value <= 5:
-                # Создаем или обновляем оценку
-                mark, created = Mark.objects.update_or_create(
-                    student=student,
-                    lesson=lesson,
-                    defaults={
-                        'value': mark_value,
-                        'mark_type': mark_type,
-                        'comment': comment,
-                        'teacher': teacher
-                    }
-                )
-                response_data['mark'] = {
-                    'id': mark.id,
-                    'value': mark.value,
-                    'type': mark.mark_type,
-                    'created': created
-                }
-            elif mark_value is None:
-                # Удаляем оценку
-                Mark.objects.filter(student=student, lesson=lesson).delete()
-                response_data['mark'] = {'deleted': True}
+            return JsonResponse({'success': True})
 
-        # Обработка посещаемости
-        if attendance_status is not None:
-            if attendance_status == 'PRESENT':
-                # Удаляем запись о посещаемости, если ученик присутствовал
-                Attendance.objects.filter(student=student, lesson=lesson).delete()
-                response_data['attendance'] = {'status': 'PRESENT', 'deleted': True}
-            else:
-                att, created = Attendance.objects.update_or_create(
-                    student=student,
-                    lesson=lesson,
-                    defaults={
-                        'status': attendance_status,
-                        'note': data.get('attendance_note', '')
-                    }
-                )
-                response_data['attendance'] = {
-                    'id': att.id,
-                    'status': att.status,
-                    'display': att.get_status_display(),
-                    'created': created
-                }
+        elif action == 'reorder_columns':
+            # Изменяем порядок столбцов
+            order_data = data.get('order', [])
 
-        # Пересчитываем средний балл ученика по предмету
-        avg_grade = Mark.objects.filter(
-            student=student,
-            lesson__subject=lesson.subject,
-            lesson__quarter=lesson.quarter
-        ).aggregate(avg=Avg('value'))['avg']
+            for item in order_data:
+                lesson_column_id = item.get('id')
+                new_order = item.get('order')
 
-        response_data['average_grade'] = round(avg_grade, 2) if avg_grade else None
+                try:
+                    lesson_column = LessonGradeColumn.objects.get(
+                        id=lesson_column_id,
+                        lesson=lesson
+                    )
+                    lesson_column.order = new_order
+                    lesson_column.save()
+                except LessonGradeColumn.DoesNotExist:
+                    continue
 
-        return JsonResponse(response_data)
+            return JsonResponse({'success': True})
+
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': 'Неизвестное действие'
+            })
 
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
 
-@login_required
-def get_student_stats(request, student_id, subject_id, quarter_id):
-    """Получение статистики по ученику для AJAX-запросов"""
-    if not request.user.is_authenticated:
-        return JsonResponse({'error': 'Требуется авторизация'}, status=403)
-
-    student = get_object_or_404(StudentProfile, id=student_id)
-    subject = get_object_or_404(Subject, id=subject_id)
-    quarter = get_object_or_404(Quarter, id=quarter_id)
-
-    # Проверяем права доступа
-    user = request.user
-    if user.role == 'STUDENT' and user.student_profile != student:
-        return JsonResponse({'error': 'Доступ запрещен'}, status=403)
-    elif user.role == 'TEACHER':
-        # Проверяем, ведет ли учитель этот предмет
-        if not user.teacher_profile.lessons.filter(
-                subject=subject,
-                quarter=quarter,
-                class_group=student.class_group
-        ).exists():
-            return JsonResponse({'error': 'Доступ запрещен'}, status=403)
-    elif user.role == 'PARENT':
-        # Проверяем, является ли родителем этого ученика
-        if not user.parent_profile.children.filter(id=student_id).exists():
-            return JsonResponse({'error': 'Доступ запрещен'}, status=403)
-
-    # Получаем оценки ученика по предмету в четверти
-    marks = Mark.objects.filter(
-        student=student,
-        lesson__subject=subject,
-        lesson__quarter=quarter
-    ).select_related('lesson', 'teacher__user').order_by('lesson__date')
-
-    # Статистика по типам оценок
-    marks_by_type = marks.values('mark_type').annotate(
-        count=Count('id'),
-        average=Avg('value')
-    )
-
-    # Посещаемость
-    attendance = Attendance.objects.filter(
-        student=student,
-        lesson__subject=subject,
-        lesson__quarter=quarter
-    ).values('status').annotate(count=Count('id'))
-
-    # Общая статистика
-    total_marks = marks.count()
-    avg_grade = marks.aggregate(avg=Avg('value'))['avg']
-
-    # Прогресс по неделям
-    weekly_progress = []
-    if quarter.start_date and quarter.end_date:
-        current_date = quarter.start_date
-        week_num = 1
-
-        while current_date <= quarter.end_date:
-            week_end = current_date + timedelta(days=6)
-            if week_end > quarter.end_date:
-                week_end = quarter.end_date
-
-            week_marks = marks.filter(
-                lesson__date__range=[current_date, week_end]
-            )
-            week_avg = week_marks.aggregate(avg=Avg('value'))['avg']
-
-            weekly_progress.append({
-                'week': week_num,
-                'start_date': current_date,
-                'end_date': week_end,
-                'marks_count': week_marks.count(),
-                'average': round(week_avg, 2) if week_avg else None
-            })
-
-            current_date = week_end + timedelta(days=1)
-            week_num += 1
-
-    response_data = {
-        'student': {
-            'id': student.id,
-            'name': student.user.get_full_name(),
-            'class': str(student.class_group) if student.class_group else None
-        },
-        'subject': subject.title,
-        'quarter': quarter.name,
-        'stats': {
-            'total_marks': total_marks,
-            'average_grade': round(avg_grade, 2) if avg_grade else None,
-            'marks_by_type': list(marks_by_type),
-            'attendance': list(attendance),
-        },
-        'weekly_progress': weekly_progress,
-        'recent_marks': list(marks.values(
-            'value', 'mark_type', 'lesson__date', 'comment'
-        ).order_by('-lesson__date')[:10])
-    }
-
-    return JsonResponse(response_data)
+def quarterly_grades():
+    pass
 
 
 @login_required
 @teacher_required
-def quarterly_grades(request, class_id, subject_id, quarter_id):
-    """Страница для выставления четвертных оценок"""
+def yearly_grades_view(request, class_id, subject_id, year_id=None):
+    """Страница годовых оценок"""
     teacher = request.user.teacher_profile
     class_group = get_object_or_404(ClassGroup, id=class_id)
     subject = get_object_or_404(Subject, id=subject_id)
-    quarter = get_object_or_404(Quarter, id=quarter_id)
 
-    # Проверяем права доступа
+    # Определяем учебный год
+    if year_id:
+        academic_year = get_object_or_404(AcademicYear, id=year_id)
+    else:
+        try:
+            academic_year = AcademicYear.objects.get(is_current=True)
+        except AcademicYear.DoesNotExist:
+            messages.error(request, 'Текущий учебный год не установлен')
+            return redirect('journal:teacher_journal')
+
+    # Проверяем права
     has_access = Lesson.objects.filter(
         teacher=teacher,
         class_group=class_group,
         subject=subject,
-        quarter=quarter
+        quarter__academic_year=academic_year
     ).exists()
 
     if not has_access:
-        raise PermissionDenied("У вас нет доступа к этому журналу")
+        raise PermissionDenied("У вас нет доступа")
 
-    # Проверяем, что четверть завершена (можно выставлять четвертные оценки)
-    quarter_ended = quarter.end_date < timezone.now().date()
-
-    # Получаем учеников класса
+    # Получаем учеников
     students = class_group.students.all().select_related('user').order_by(
         'user__last_name', 'user__first_name'
     )
 
-    # Получаем или создаем четвертные оценки
-    quarterly_grades_list = []
+    # Получаем четверти этого учебного года
+    quarters = Quarter.objects.filter(
+        academic_year=academic_year
+    ).order_by('number')
+
+    # Получаем четвертные оценки
+    quarterly_grades_by_student = {}
     for student in students:
-        # Получаем средний балл за четверть
-        marks = Mark.objects.filter(
-            student=student,
-            lesson__subject=subject,
-            lesson__quarter=quarter
-        )
-
-        avg_grade = marks.aggregate(avg=Avg('value'))['avg']
-        marks_count = marks.count()
-
-        # Получаем или создаем четвертную оценку
-        quarterly_grade, created = QuarterlyGrade.objects.get_or_create(
+        q_grades = QuarterlyGrade.objects.filter(
             student=student,
             subject=subject,
-            quarter=quarter,
-            defaults={
-                'calculated_grade': round(avg_grade, 2) if avg_grade else 0,
-                'grade': None
-            }
+            quarter__in=quarters
+        ).select_related('quarter').order_by('quarter__number')
+        quarterly_grades_by_student[student.id] = {q.quarter.number: q for q in q_grades}
+
+    # Получаем или создаем годовые оценки
+    yearly_grades = []
+    for student in students:
+        yearly_grade, created = YearlyGrade.objects.get_or_create(
+            student=student,
+            subject=subject,
+            academic_year=academic_year,
+            defaults={'calculation_method': 'AVERAGE'}
         )
 
-        # Предлагаемая оценка на основе среднего балла
-        suggested_grade = None
-        if avg_grade:
-            if avg_grade >= 4.5:
-                suggested_grade = 5
-            elif avg_grade >= 3.5:
-                suggested_grade = 4
-            elif avg_grade >= 2.5:
-                suggested_grade = 3
-            else:
-                suggested_grade = 2
+        # Автоматически связываем четвертные оценки
+        q_grades = QuarterlyGrade.objects.filter(
+            student=student,
+            subject=subject,
+            quarter__in=quarters,
+            grade__isnull=False
+        )
+        yearly_grade.quarterly_grades.set(q_grades)
+        yearly_grade.save(force_recalculate=True)
 
-        quarterly_grades_list.append({
+        # Собираем данные по четвертям
+        quarter_data = []
+        for quarter in quarters:
+            q_grade = quarterly_grades_by_student[student.id].get(quarter.number)
+            quarter_data.append({
+                'quarter': quarter,
+                'grade': q_grade.grade if q_grade else None,
+                'calculated': q_grade.calculated_grade if q_grade else None,
+                'id': q_grade.id if q_grade else None
+            })
+
+        yearly_grades.append({
             'student': student,
-            'marks_count': marks_count,
-            'average_grade': round(avg_grade, 2) if avg_grade else None,
-            'quarterly_grade': quarterly_grade,
-            'suggested_grade': suggested_grade,
-            'can_edit': not quarterly_grade.is_finalized or not quarter_ended
+            'yearly_grade': yearly_grade,
+            'quarters': quarter_data,
+            'can_edit': not yearly_grade.is_finalized
         })
 
     # Обработка формы
     if request.method == 'POST':
-        if not quarter_ended:
-            messages.warning(request, 'Четверть еще не завершена. Оценки будут сохранены как предварительные.')
-
         saved_count = 0
-        for student_data in quarterly_grades_list:
-            student = student_data['student']
+        for data in yearly_grades:
+            student = data['student']
             grade_key = f'grade_{student.id}'
+            method_key = f'method_{student.id}'
             comment_key = f'comment_{student.id}'
 
             grade_value = request.POST.get(grade_key)
+            method_value = request.POST.get(method_key, 'AVERAGE')
             comment_value = request.POST.get(comment_key, '')
+
+            yearly_grade = data['yearly_grade']
+            yearly_grade.calculation_method = method_value
+            yearly_grade.comment = comment_value
 
             if grade_value and grade_value.isdigit():
                 grade = int(grade_value)
                 if 1 <= grade <= 5:
-                    # Обновляем или создаем четвертную оценку
-                    quarterly_grade, created = QuarterlyGrade.objects.update_or_create(
-                        student=student,
-                        subject=subject,
-                        quarter=quarter,
-                        defaults={
-                            'grade': grade,
-                            'comment': comment_value,
-                            'is_finalized': quarter_ended,
-                            'finalized_by': teacher if quarter_ended else None,
-                            'finalized_at': timezone.now() if quarter_ended else None
-                        }
-                    )
-                    saved_count += 1
+                    yearly_grade.grade = grade
 
-        messages.success(request, f'Сохранено {saved_count} четвертных оценок')
-        return redirect('journal:quarterly_grades',
+            yearly_grade.save()
+            saved_count += 1
+
+        messages.success(request, f'Сохранено {saved_count} годовых оценок')
+        return redirect('journal:yearly_grades',
                         class_id=class_id,
                         subject_id=subject_id,
-                        quarter_id=quarter_id)
+                        year_id=academic_year.id)
 
     context = {
         'class_group': class_group,
         'subject': subject,
-        'quarter': quarter,
-        'quarter_ended': quarter_ended,
-        'quarterly_grades': quarterly_grades_list,
-        'teacher': teacher,
+        'academic_year': academic_year,
+        'quarters': quarters,
+        'yearly_grades': yearly_grades,
     }
 
-    return render(request, 'journal/quarterly_grades.html', context)
-
-# from django.shortcuts import render, get_object_or_404, redirect
-# from django.contrib.auth.decorators import login_required
-# from django.contrib import messages
-# from django.http import JsonResponse
-# from django.utils import timezone
-# from django.db.models import Avg, Count, Q, Sum
-# from django.views.decorators.csrf import csrf_exempt
-# from django.views.decorators.http import require_POST
-# import json
-# from datetime import datetime, timedelta
-#
-# # Импортируем декораторы из users
-# from users.decorators import teacher_required, class_teacher_required, subject_teacher_required
-#
-# from school_structure.models import Quarter, ClassGroup, Subject, Lesson, AcademicYear
-# from users.models import StudentProfile, TeacherProfile
-# from .models import Mark, Attendance, Homework, QuarterlyGrade, YearlyGrade
-# from .forms import MarkForm, AttendanceForm, QuickGradeForm, QuarterlyGradeForm
-#
-#
-# @login_required
-# @teacher_required
-# def teacher_journal(request):
-#     """Главная страница журнала учителя - выбор класса и предмета"""
-#     teacher = request.user.teacher_profile
-#
-#     # Получаем текущую четверть
-#     try:
-#         current_quarter = Quarter.objects.get(is_current=True)
-#     except Quarter.DoesNotExist:
-#         current_quarter = None
-#
-#     # Получаем классы и предметы, которые ведет учитель
-#     teacher_classes = ClassGroup.objects.filter(
-#         lessons__teacher=teacher,
-#         lessons__quarter=current_quarter
-#     ).distinct()
-#
-#     teacher_subjects = Subject.objects.filter(
-#         lessons__teacher=teacher,
-#         lessons__quarter=current_quarter
-#     ).distinct()
-#
-#     context = {
-#         'teacher': teacher,
-#         'current_quarter': current_quarter,
-#         'classes': teacher_classes,
-#         'subjects': teacher_subjects,
-#     }
-#     return render(request, 'journal/teacher_journal.html', context)
-#
-#
-# @login_required
-# @teacher_required
-# def class_subject_journal(request, class_id, subject_id, quarter_id=None):
-#     """Журнал по конкретному классу и предмету"""
-#     teacher = request.user.teacher_profile
-#     class_group = get_object_or_404(ClassGroup, id=class_id)
-#     subject = get_object_or_404(Subject, id=subject_id)
-#
-#     # Определяем четверть
-#     if quarter_id:
-#         quarter = get_object_or_404(Quarter, id=quarter_id)
-#     else:
-#         try:
-#             quarter = Quarter.objects.get(is_current=True)
-#         except Quarter.DoesNotExist:
-#             quarter = None
-#
-#     # Проверяем, ведет ли учитель этот предмет в этом классе в этой четверти
-#     if not Lesson.objects.filter(
-#             teacher=teacher,
-#             class_group=class_group,
-#             subject=subject,
-#             quarter=quarter
-#     ).exists():
-#         messages.error(request, 'У вас нет доступа к этому журналу')
-#         return redirect('journal:teacher_journal')
-#
-#     # Получаем учеников класса
-#     students = class_group.students.all().order_by('user__last_name', 'user__first_name')
-#
-#     # Получаем уроки по предмету в этой четверти
-#     lessons = Lesson.objects.filter(
-#         class_group=class_group,
-#         subject=subject,
-#         quarter=quarter
-#     ).order_by('date')
-#
-#     # Получаем оценки и посещаемость
-#     marks_data = {}
-#     attendance_data = {}
-#
-#     for student in students:
-#         # Оценки студента
-#         student_marks = Mark.objects.filter(
-#             student=student,
-#             lesson__in=lessons
-#         ).select_related('lesson')
-#
-#         marks_data[student.id] = {mark.lesson_id: mark for mark in student_marks}
-#
-#         # Посещаемость студента
-#         student_attendance = Attendance.objects.filter(
-#             student=student,
-#             lesson__in=lessons
-#         ).select_related('lesson')
-#
-#         attendance_data[student.id] = {att.lesson_id: att for att in student_attendance}
-#
-#     # Рассчитываем средние баллы
-#     avg_grades = Mark.objects.filter(
-#         student__in=students,
-#         lesson__in=lessons
-#     ).values('student').annotate(
-#         avg_grade=Avg('value'),
-#         count_marks=Count('id')
-#     )
-#
-#     avg_grades_dict = {item['student']: item['avg_grade'] for item in avg_grades}
-#
-#     # Получаем список четвертей для переключения
-#     quarters = Quarter.objects.filter(
-#         academic_year=class_group.academic_year
-#     ).order_by('number')
-#
-#     context = {
-#         'class_group': class_group,
-#         'subject': subject,
-#         'quarter': quarter,
-#         'quarters': quarters,
-#         'students': students,
-#         'lessons': lessons,
-#         'marks_data': marks_data,
-#         'attendance_data': attendance_data,
-#         'avg_grades_dict': avg_grades_dict,
-#         'attendance_statuses': Attendance.Status.choices,
-#     }
-#     return render(request, 'journal/class_subject_journal.html', context)
-#
-#
-# @csrf_exempt
-# @require_POST
-# @login_required
-# @teacher_required
-# def update_mark_attendance(request):
-#     """Обновление оценки и посещаемости через AJAX"""
-#     try:
-#         data = json.loads(request.body)
-#         student_id = data.get('student_id')
-#         lesson_id = data.get('lesson_id')
-#         mark_value = data.get('mark_value')
-#         attendance_status = data.get('attendance_status')
-#         attendance_note = data.get('attendance_note', '')
-#
-#         student = get_object_or_404(StudentProfile, id=student_id)
-#         lesson = get_object_or_404(Lesson, id=lesson_id)
-#         teacher = request.user.teacher_profile
-#
-#         # Проверяем, что урок принадлежит учителю
-#         if lesson.teacher != teacher:
-#             return JsonResponse({'success': False, 'error': 'Нет доступа'})
-#
-#         # Проверяем, не закончилась ли четверть
-#         if lesson.quarter.end_date < timezone.now().date():
-#             return JsonResponse({'success': False, 'error': 'Четверть завершена, редактирование невозможно'})
-#
-#         response_data = {'success': True}
-#
-#         # Обработка оценки
-#         if mark_value is not None:
-#             mark_value = int(mark_value) if mark_value else None
-#             if mark_value:
-#                 mark, created = Mark.objects.update_or_create(
-#                     student=student,
-#                     lesson=lesson,
-#                     defaults={
-#                         'value': mark_value,
-#                         'teacher': teacher,
-#                         'mark_type': 'CLASSWORK'
-#                     }
-#                 )
-#                 response_data['mark'] = {
-#                     'id': mark.id,
-#                     'value': mark.value,
-#                     'created': created
-#                 }
-#             else:
-#                 # Удаляем оценку, если передано пустое значение
-#                 Mark.objects.filter(student=student, lesson=lesson).delete()
-#                 response_data['mark'] = {'deleted': True}
-#
-#         # Обработка посещаемости
-#         if attendance_status is not None:
-#             if attendance_status == 'PRESENT' or attendance_status == '':
-#                 # Если присутствовал или пустая строка, удаляем запись о посещаемости
-#                 Attendance.objects.filter(student=student, lesson=lesson).delete()
-#                 response_data['attendance'] = {'status': 'PRESENT', 'deleted': True}
-#             else:
-#                 att, created = Attendance.objects.update_or_create(
-#                     student=student,
-#                     lesson=lesson,
-#                     defaults={
-#                         'status': attendance_status,
-#                         'note': attendance_note
-#                     }
-#                 )
-#                 response_data['attendance'] = {
-#                     'id': att.id,
-#                     'status': att.status,
-#                     'display': att.get_status_display(),
-#                     'created': created
-#                 }
-#
-#         # Рассчитываем средний балл по предмету за четверть
-#         avg = Mark.objects.filter(
-#             student=student,
-#             lesson__subject=lesson.subject,
-#             lesson__quarter=lesson.quarter
-#         ).aggregate(avg=Avg('value'))['avg']
-#
-#         response_data['average'] = round(avg, 2) if avg else None
-#
-#         return JsonResponse(response_data)
-#
-#     except Exception as e:
-#         return JsonResponse({'success': False, 'error': str(e)})
-#
-#
-# @login_required
-# @teacher_required
-# def get_student_stats(request, student_id, subject_id, quarter_id):
-#     """Получение статистики по ученику"""
-#     student = get_object_or_404(StudentProfile, id=student_id)
-#     subject = get_object_or_404(Subject, id=subject_id)
-#     quarter = get_object_or_404(Quarter, id=quarter_id)
-#
-#     marks = Mark.objects.filter(
-#         student=student,
-#         lesson__subject=subject,
-#         lesson__quarter=quarter
-#     ).order_by('lesson__date')
-#
-#     marks_list = list(marks.values('value', 'mark_type', 'lesson__date', 'comment'))
-#
-#     # Средний балл
-#     avg_grade = marks.aggregate(avg=Avg('value'))['avg']
-#
-#     # Распределение по типам оценок
-#     marks_by_type = marks.values('mark_type').annotate(
-#         count=Count('id'),
-#         avg=Avg('value')
-#     )
-#
-#     # Посещаемость
-#     attendance = Attendance.objects.filter(
-#         student=student,
-#         lesson__subject=subject,
-#         lesson__quarter=quarter
-#     ).values('status').annotate(count=Count('id'))
-#
-#     stats = {
-#         'marks_count': marks.count(),
-#         'avg_grade': round(avg_grade, 2) if avg_grade else None,
-#         'marks_by_type': list(marks_by_type),
-#         'attendance': list(attendance),
-#         'recent_marks': marks_list[:5]  # последние 5 оценок
-#     }
-#
-#     return JsonResponse(stats)
-#
-#
-# @login_required
-# @teacher_required
-# def quarterly_grades(request, class_id, subject_id, quarter_id):
-#     """Страница для выставления четвертных оценок"""
-#     teacher = request.user.teacher_profile
-#     class_group = get_object_or_404(ClassGroup, id=class_id)
-#     subject = get_object_or_404(Subject, id=subject_id)
-#     quarter = get_object_or_404(Quarter, id=quarter_id)
-#
-#     # Проверяем, что учитель имеет доступ
-#     if not Lesson.objects.filter(
-#             teacher=teacher,
-#             class_group=class_group,
-#             subject=subject,
-#             quarter=quarter
-#     ).exists():
-#         messages.error(request, 'У вас нет доступа к этому журналу')
-#         return redirect('journal:teacher_journal')
-#
-#     # Проверяем, что четверть завершена (можно выставлять четвертные оценки)
-#     if quarter.end_date > timezone.now().date():
-#         messages.warning(request, 'Четверть еще не завершена. Вы можете выставить предварительные оценки.')
-#
-#     # Получаем учеников
-#     students = class_group.students.all().order_by('user__last_name')
-#
-#     # Рассчитываем средние баллы для каждого ученика
-#     students_data = []
-#     for student in students:
-#         # Средний балл за четверть
-#         avg_grade = Mark.objects.filter(
-#             student=student,
-#             lesson__subject=subject,
-#             lesson__quarter=quarter
-#         ).aggregate(avg=Avg('value'))['avg']
-#
-#         # Количество оценок
-#         marks_count = Mark.objects.filter(
-#             student=student,
-#             lesson__subject=subject,
-#             lesson__quarter=quarter
-#         ).count()
-#
-#         # Получаем или создаем четвертную оценку
-#         quarterly_grade, created = QuarterlyGrade.objects.get_or_create(
-#             student=student,
-#             subject=subject,
-#             quarter=quarter,
-#             defaults={
-#                 'calculated_grade': round(avg_grade, 2) if avg_grade else 0
-#             }
-#         )
-#
-#         students_data.append({
-#             'student': student,
-#             'avg_grade': round(avg_grade, 2) if avg_grade else None,
-#             'marks_count': marks_count,
-#             'quarterly_grade': quarterly_grade,
-#         })
-#
-#     if request.method == 'POST':
-#         for student in students:
-#             grade_key = f'grade_{student.id}'
-#             comment_key = f'comment_{student.id}'
-#
-#             if grade_key in request.POST:
-#                 grade_value = request.POST.get(grade_key)
-#                 comment_value = request.POST.get(comment_key, '')
-#
-#                 if grade_value:
-#                     quarterly_grade, created = QuarterlyGrade.objects.update_or_create(
-#                         student=student,
-#                         subject=subject,
-#                         quarter=quarter,
-#                         defaults={
-#                             'grade': int(grade_value),
-#                             'comment': comment_value,
-#                             'finalized_by': teacher,
-#                             'finalized_at': timezone.now(),
-#                             'is_finalized': True
-#                         }
-#                     )
-#                 else:
-#                     # Если оценка удалена, снимаем флаг утверждения
-#                     QuarterlyGrade.objects.filter(
-#                         student=student,
-#                         subject=subject,
-#                         quarter=quarter
-#                     ).update(
-#                         grade=None,
-#                         is_finalized=False,
-#                         finalized_by=None,
-#                         finalized_at=None
-#                     )
-#
-#         messages.success(request, 'Четвертные оценки сохранены')
-#         return redirect('journal:quarterly_grades',
-#                         class_id=class_id,
-#                         subject_id=subject_id,
-#                         quarter_id=quarter_id)
-#
-#     context = {
-#         'class_group': class_group,
-#         'subject': subject,
-#         'quarter': quarter,
-#         'students_data': students_data,
-#         'quarter_end_date': quarter.end_date,
-#     }
-#
-#     return render(request, 'journal/quarterly_grades.html', context)
-
-
-# from datetime import timedelta
-#
-# from django.contrib import messages
-# from django.shortcuts import render, get_object_or_404, redirect
-# from django.contrib.auth.decorators import login_required
-# from django.utils import timezone
-# from django.db.models import Avg, Count, Q
-# from users.decorators import teacher_required, class_teacher_required, subject_teacher_required
-# from school_structure.models import Quarter, ClassGroup, Subject, Lesson
-# from .models import Mark, Attendance, Homework, QuarterlyGrade
-# from .forms import MarkForm, AttendanceForm, QuickGradeForm, QuarterlyGradeForm
-#
-#
-# # journal/views.py (продолжение)
-#
-# @login_required
-# @teacher_required
-# def teacher_journal(request):
-#     """Главная страница журнала учителя - выбор класса и предмета"""
-#     teacher = request.user.teacher_profile
-#
-#     # Получаем текущую четверть
-#     try:
-#         current_quarter = Quarter.objects.get(is_current=True)
-#     except Quarter.DoesNotExist:
-#         current_quarter = None
-#
-#     # Получаем классы и предметы, которые ведет учитель
-#     teacher_classes = ClassGroup.objects.filter(
-#         lessons__teacher=teacher,
-#         lessons__quarter=current_quarter
-#     ).distinct()
-#
-#     teacher_subjects = Subject.objects.filter(
-#         lessons__teacher=teacher,
-#         lessons__quarter=current_quarter
-#     ).distinct()
-#
-#     context = {
-#         'teacher': teacher,
-#         'current_quarter': current_quarter,
-#         'classes': teacher_classes,
-#         'subjects': teacher_subjects,
-#     }
-#     return render(request, 'journal/teacher_journal.html', context)
-#
-#
-# @login_required
-# @teacher_required
-# @class_teacher_required  # Новый декоратор для проверки классного руководства
-# def class_teacher_dashboard(request, class_id):
-#     """Дашборд классного руководителя"""
-#     class_group = get_object_or_404(ClassGroup, id=class_id)
-#     teacher = request.user.teacher_profile
-#
-#     # Статистика по классу
-#     students = class_group.students.all()
-#     total_students = students.count()
-#
-#     # Средние оценки по предметам
-#     subject_stats = []
-#     subjects = Subject.objects.filter(lessons__class_group=class_group).distinct()
-#
-#     for subject in subjects:
-#         avg_grade = Mark.objects.filter(
-#             lesson__class_group=class_group,
-#             lesson__subject=subject
-#         ).aggregate(avg=Avg('value'))['avg']
-#
-#         subject_stats.append({
-#             'subject': subject,
-#             'avg_grade': round(avg_grade, 2) if avg_grade else None,
-#             'marks_count': Mark.objects.filter(
-#                 lesson__class_group=class_group,
-#                 lesson__subject=subject
-#             ).count()
-#         })
-#
-#     # Посещаемость за последнюю неделю
-#     week_ago = timezone.now().date() - timedelta(days=7)
-#     attendance_stats = Attendance.objects.filter(
-#         student__class_group=class_group,
-#         lesson__date__gte=week_ago
-#     ).aggregate(
-#         present=Count('id', filter=Q(status='PRESENT')),
-#         absent=Count('id', filter=Q(status='ABSENT')),
-#         ill=Count('id', filter=Q(status='ILL')),
-#         late=Count('id', filter=Q(status='LATE'))
-#     )
-#
-#     context = {
-#         'class_group': class_group,
-#         'teacher': teacher,
-#         'total_students': total_students,
-#         'subject_stats': subject_stats,
-#         'attendance_stats': attendance_stats,
-#         'students': students,
-#     }
-#
-#     return render(request, 'journal/class_teacher_dashboard.html', context)
-
-# from django.shortcuts import render
-# from rest_framework import viewsets, permissions, filters
-# from rest_framework.decorators import action
-# from rest_framework.response import Response
-# from django_filters.rest_framework import DjangoFilterBackend
-# from .models import Mark, Attendance, Homework
-# from .serializers import MarkSerializer, AttendanceSerializer, HomeworkSerializer
-#
-#
-# class MarkViewSet(viewsets.ModelViewSet):
-#     serializer_class = MarkSerializer
-#     permission_classes = [permissions.IsAuthenticated]
-#     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-#     filterset_fields = ['student', 'lesson', 'mark_type']
-#     search_fields = ['student__user__first_name', 'student__user__last_name', 'comment']
-#     ordering_fields = ['created_at', 'value']
-#
-#     def get_queryset(self):
-#         user = self.request.user
-#         # queryset = Mark.objects.all()
-#         queryset = Mark.objects.select_related(
-#             'student__user',
-#             'lesson__subject',
-#             'teacher__user'
-#         )
-#         if user.role == 'STUDENT':
-#             queryset = queryset.filter(student__user=user)
-#         elif user.role == 'TEACHER':
-#             # Учитель видит оценки: 1) которые он выставил, 2) за свои уроки.
-#             from django.db.models import Q
-#             queryset = queryset.filter(
-#                 Q(teacher__user=user) | Q(lesson__teacher__user=user)
-#             )
-#         # Администратор видит все оценки (queryset остается без изменений)
-#         return queryset
-#
-#     @action(detail=False, methods=['get'])
-#     def student_marks(self, request):
-#         student_id = request.query_params.get('student_id')
-#         marks = Mark.objects.filter(student_id=student_id)
-#         serializer = self.get_serializer(marks, many=True)
-#         return Response(serializer.data)
-#     """Безопасность эндпоинта student_marks: Любой аутентифицированный пользователь может получить оценки любого
-#     ученика, указав student_id. Добавьте проверку прав: учитель может смотреть своих учеников, родитель — своих
-#     детей, ученик — только свои."""
-#
-#
-# class AttendanceViewSet(viewsets.ModelViewSet):
-#     serializer_class = AttendanceSerializer
-#     permission_classes = [permissions.IsAuthenticated]
-#     filter_backends = [DjangoFilterBackend]
-#     filterset_fields = ['student', 'lesson', 'status']
-#
-#     def get_queryset(self):
-#         user = self.request.user
-#         if user.role == 'STUDENT':
-#             return Attendance.objects.filter(student__user=user)
-#         return Attendance.objects.all()
-#
-#
-# class HomeworkViewSet(viewsets.ModelViewSet):
-#     serializer_class = HomeworkSerializer
-#     permission_classes = [permissions.IsAuthenticated]
-#     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-#     filterset_fields = ['lesson', 'lesson__class_group']
-#     ordering_fields = ['deadline', 'created_at']
-#
-#     def get_queryset(self):
-#         user = self.request.user
-#         if user.role == 'STUDENT':
-#             student_profile = user.student_profile
-#             return Homework.objects.filter(lesson__class_group=student_profile.class_group)
-#         return Homework.objects.all()
+    return render(request, 'journal/yearly_grades.html', context)
