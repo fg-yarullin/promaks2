@@ -1,4 +1,5 @@
 {% extends 'layouts/base.html' %}
+{% load bootstrap_icons %}
 {% load static %}
 {% load journal_tags %}
 
@@ -33,27 +34,24 @@
 
     <!-- Основная таблица -->
     <div class="table-responsive" style="max-height: 70vh;">
-        <table class="table table-bordered" id="journalTable">
+        <table class="table table-bordered table-hover" id="journalTable">
             <thead class="table-light" style="position: sticky; top: 0;">
                 <tr>
                     <th rowspan="2" style="min-width: 200px; position: sticky; left: 0; background: white;">
                         Ученик
                     </th>
-                    <th rowspan="2" style="min-width: 100px; position: sticky; left: 200px; background: white;">
-                        Средний
-                    </th>
-
                     {% for lesson_data in lessons_with_columns %}
                         {% if lesson_data.columns %}
                             <th colspan="{{ lesson_data.columns|length }}" class="text-center lesson-header"
                                 data-lesson-id="{{ lesson_data.lesson.id }}"
                                 style="background-color: #f8f9fa; cursor: pointer;">
                                 {{ lesson_data.lesson.date|date:"d.m" }}
-                                <br>
-                                <small class="text-muted">ур. {{ lesson_data.lesson.lesson_number }}</small>
+{#                                <br>#}
+{#                                <small class="text-muted">ур. {{ lesson_data.lesson.lesson_number }}</small>#}
                                 <br>
                                 <small class="text-primary">
-                                    <i class="bi bi-plus-circle"></i> Добавить столбец
+{#                                    <i class="bi bi-plus-circle"></i> Добавить столбец#}
+                                    {% bs_icon 'plus-circle' %}
                                 </small>
                             </th>
                         {% else %}
@@ -61,16 +59,19 @@
                                 data-lesson-id="{{ lesson_data.lesson.id }}"
                                 style="background-color: #f8f9fa; cursor: pointer;">
                                 {{ lesson_data.lesson.date|date:"d.m" }}
-                                <br>
-                                <small class="text-muted">ур. {{ lesson_data.lesson.lesson_number }}</small>
+{#                                <br>#}
+{#                                <small class="text-muted">ур. {{ lesson_data.lesson.lesson_number }}</small>#}
                                 <br>
                                 <small class="text-primary">
-                                    <i class="bi bi-plus-circle"></i> Добавить столбец
+{#                                    <i class="bi bi-plus-circle"></i> Добавить столбец#}
+                                    {% bs_icon 'plus-circle' %}
                                 </small>
                             </th>
                         {% endif %}
                     {% endfor %}
-
+                    <th rowspan="2" style="min-width: 100px; position: sticky; left: 200px; background: white;">
+                        Средний
+                    </th>
                     <th rowspan="2" style="min-width: 100px; background-color: #fff3cd;">
                         Четвертная
                     </th>
@@ -86,8 +87,8 @@
                                     <span class="badge mb-1" style="background-color: {{ column.grade_type.color }};">
                                         {{ column.grade_type.short_title }}
                                     </span>
-                                    <small class="text-muted">{{ column.title|truncatechars:15 }}</small>
-                                    <small class="text-muted">в.{{ column.grade_type.weight }}</small>
+{#                                    <small class="text-muted">{{ column.title|truncatechars:15 }}</small>#}
+{#                                    <small class="text-muted">в.{{ column.grade_type.weight }}</small>#}
                                 </div>
                             </th>
                         {% endfor %}
@@ -101,18 +102,6 @@
     <td style="position: sticky; left: 0; background: white;">
         <strong>{{ stats.student.user.last_name }} {{ stats.student.user.first_name }}</strong>
     </td>
-    <td style="position: sticky; left: 200px; background: white; text-align: center;">
-        <span class="badge
-            {% if stats.avg_grade >= 4.5 %}bg-success
-            {% elif stats.avg_grade >= 3.5 %}bg-primary
-            {% elif stats.avg_grade >= 2.5 %}bg-warning
-            {% elif stats.avg_grade %}bg-danger
-            {% else %}bg-secondary{% endif %}"
-              id="avg-{{ stats.student.id }}">
-            {{ stats.avg_grade|default:"-"|floatformat:2 }}
-        </span>
-    </td>
-
     {% for lesson_data in lessons_with_columns %}
         {% for column in lesson_data.columns %}
             {% get_student_grade grades_dict stats.student.id column.id as grade_value %}
@@ -139,6 +128,18 @@
             </td>
         {% endfor %}
     {% endfor %}
+
+    <td style="position: sticky; left: 200px; background: white; text-align: center;">
+        <span class="badge
+            {% if stats.avg_grade >= 4.5 %}bg-success
+            {% elif stats.avg_grade >= 3.5 %}bg-primary
+            {% elif stats.avg_grade >= 2.5 %}bg-warning
+            {% elif stats.avg_grade %}bg-danger
+            {% else %}bg-secondary{% endif %}"
+              id="avg-{{ stats.student.id }}">
+            {{ stats.avg_grade|default:"-"|floatformat:2 }}
+        </span>
+    </td>
 
     <td style="background-color: #fff3cd; text-align: center;">
         {% if stats.quarterly_grade and stats.quarterly_grade.grade %}
@@ -391,33 +392,62 @@
 {% endblock %}
 
 {% block extra_css %}
-<style>
+    <style>
+        #journalTable th {
+            white-space: nowrap;
+            vertical-align: middle;
+        }
 
-.lesson-header:hover {
-    background-color: #e9ecef !important;
-}
-
-.column-header:hover {
-    background-color: #e9ecef !important;
-}
-
-.grade-cell:hover {
-    background-color: rgba(0, 123, 255, 0.1) !important;
-}
-
-#journalTable th {
-    white-space: nowrap;
-    vertical-align: middle;
-}
-
-#journalTable td {
-    vertical-align: middle;
-}
-</style>
+        #journalTable td {
+            vertical-align: middle;
+        }
+    </style>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+/*---- началоЖ выделение столбца и строки в таблице ----*/
+const journalTable = document.querySelector('#journalTable');
+journalTable.addEventListener('mouseover', event => {
+    event.preventDefault();
+    let cell = event.target.closest('td');
+    let row = event.target.closest('tr');
+    {#row.style.backgroundColor = 'rgba(228,219,191,0.62)';#}
+
+    if (cell && cell.getAttribute('data-column-id')) {
+        const dataColumnId = cell.getAttribute('data-column-id');
+        const gradeColumnCells = document.querySelectorAll(`[data-column-id="${dataColumnId}"]`);
+        gradeColumnCells.forEach(element => {
+            element.style.backgroundColor = '#b4f3c9';
+        });
+        cell.style.backgroundColor = 'rgba(228,219,191,0.62)';
+    }
+});
+
+journalTable.addEventListener('mouseout', event => {
+    event.preventDefault();
+    let cell = event.target.closest('td');
+    {#let row = event.target.closest('tr');#}
+    if (cell && cell.getAttribute('data-column-id')) {
+        const dataColumnId = cell.getAttribute('data-column-id');
+        const gradeColumnCells = document.querySelectorAll(`[data-column-id="${dataColumnId}"]`);
+        gradeColumnCells.forEach(element => {
+            element.style.backgroundColor = 'white';
+        });
+        {#row.style.backgroundColor = '';#}
+    }
+});
+/*---- конец: выделение столбца и строки в таблице ----*/
+
+const gradeColumns = document.querySelectorAll('.column-header');
+gradeColumns.forEach(column => {
+    column.addEventListener('click', event =>{
+        const gradeCell = event.target.parentElement;
+        const dataColumnId = gradeCell.getAttribute('data-column-id')
+
+    });
+});
+
 $(document).ready(function() {
     let currentContext = 'column'; // 'column' или 'lesson'
     let currentLessonId = null;
@@ -612,7 +642,6 @@ $(document).ready(function() {
     $('#deleteColumnBtn').click(function() {
         if (confirm('Удалить этот столбец? Все оценки в нем будут удалены.')) {
             const columnId = $('#manageColumnId').val();
-
             $.ajax({
                 url: '{% url "journal:manage_lesson_column" %}',
                 method: 'POST',
@@ -762,7 +791,7 @@ $(document).ready(function() {
         const bsToast = new bootstrap.Toast(toast[0]);
         bsToast.show();
 
-        setTimeout(() => bsToast.hide(), 3000);
+        setTimeout(() => bsToast.hide(), 9000);
     }
 
 });

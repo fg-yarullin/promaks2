@@ -358,9 +358,14 @@ def manage_lesson_column(request):
         lesson_id = data.get('lesson_id')
         column_id = data.get('column_id')
         grade_type_id = data.get('grade_type_id')
+        lesson_grade_column = LessonGradeColumn.objects.filter('', column_id).first()
+        # lesson_grade_column = get_object_or_404(LessonGradeColumn, 'column_id', column_id)
+        print(action, lesson_id, column_id, grade_type_id)
+        pass
 
         lesson = get_object_or_404(Lesson, id=lesson_id)
         teacher = request.user.teacher_profile
+
 
         # Проверяем права
         if lesson.teacher != teacher:
